@@ -1,0 +1,13 @@
+.DS_Store
+.mcp.json
+
+# Node / package manager artifacts
+node_modules/
+
+# Environment files
+.env
+.env.*
+
+# Build and render outputs
+dist/
+out/
