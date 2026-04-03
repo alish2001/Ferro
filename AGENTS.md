@@ -28,10 +28,10 @@ bun run typecheck
 
 ### `apps/web`
 
-This is the Next.js App Router shell for the product surface.
+This is the Next.js App Router surface for the product flow.
 
-- It is intentionally light right now
-- `FER-6` is expected to add the first upload / transcript / instructions / taste flow here
+- The current upload / transcript / instructions / taste flow lives here
+- Keep the current flow as a single page in `apps/web`
 - If you edit this app, read `apps/web/AGENTS.md` first because the Next.js version is newer than many default assumptions
 
 ### `packages/render-core`
@@ -76,4 +76,4 @@ If `packages/render-core` is ever moved again, preserve those relative links exa
 
 ## Current Direction
 
-The repo foundation is in place. The next likely layer is the first Ferro MVP page in `apps/web`, not another structural rewrite.
+The repo foundation is in place. The current direction is iterating on the first upload page in `apps/web`, not another structural rewrite.

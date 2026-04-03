@@ -1,33 +1,29 @@
-import type { Metadata } from "next";
-import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
-import "./globals.css";
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  weight: ["400", "500"],
-});
+import type { Metadata } from "next"
+import { GeistMono } from "geist/font/mono"
+import { GeistSans } from "geist/font/sans"
+import { cn } from "@/lib/utils"
+import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Ferro",
-  description: "Ferro web shell for uploads, jobs, and render orchestration.",
-};
+  title: "Ferro | Upload",
+  description:
+    "Upload a source video, transcript, taste, and prompt to kick off the first Ferro generation flow.",
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable}`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={cn("font-sans", GeistSans.variable, GeistMono.variable)}
+    >
+      <body suppressHydrationWarning className={cn(GeistSans.className, "antialiased")}>
         {children}
       </body>
     </html>
-  );
+  )
 }

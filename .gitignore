@@ -10,10 +10,13 @@ bun.lockb
 .env.*
 
 # App/tooling artifacts
+.codex-artifacts/
 .next/
 .turbo/
 .vercel/
 coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
 
 # Build and render outputs
