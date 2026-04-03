@@ -3,11 +3,20 @@
 
 # Node / package manager artifacts
 node_modules/
+bun.lockb
 
 # Environment files
 .env
 .env.*
 
+# App/tooling artifacts
+.next/
+.turbo/
+.vercel/
+coverage/
+*.tsbuildinfo
+
 # Build and render outputs
 dist/
 out/
+build/

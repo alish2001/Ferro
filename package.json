@@ -1,0 +1,19 @@
+{
+  "name": "ferro",
+  "private": true,
+  "packageManager": "bun@1.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:render": "bun run --cwd packages/render-core dev",
+    "lint": "bun run lint:web && bun run lint:render",
+    "lint:web": "bun run --cwd apps/web lint",
+    "lint:render": "bun run --cwd packages/render-core lint",
+    "typecheck": "bun run typecheck:web && bun run typecheck:render",
+    "typecheck:web": "bun run --cwd apps/web typecheck",
+    "typecheck:render": "bun run --cwd packages/render-core typecheck"
+  }
+}
