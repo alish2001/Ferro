@@ -5,11 +5,16 @@ import { RenderRequestError, parseRenderFormData } from "./request"
 const validPayload = {
   layers: [
     {
+      id: "layer-1",
       code: "export const Component = () => null;",
+      brief: "Intro title card",
       type: "title-card",
       title: "Intro",
       from: 0,
       durationInFrames: 30,
+      status: "ready",
+      error: null,
+      currentVersionId: "version-1",
     },
   ],
   fps: 30,

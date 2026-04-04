@@ -1,8 +1,9 @@
 "use client"
 
-import type { ChangeEvent, DragEvent } from "react"
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import type { ChangeEvent, DragEvent, FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
+  AlertCircle,
   ArrowLeft,
   Captions,
   Clapperboard,
@@ -12,8 +13,9 @@ import {
   Upload,
   WandSparkles,
 } from "lucide-react"
-import dynamic from "next/dynamic"
 
+import { CompositorPreview } from "@/components/preview/CompositorPreview"
+import { GraphicCard } from "@/components/preview/GraphicCard"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ModelSelector } from "@/components/ui/model-selector"
 import {
@@ -27,14 +29,31 @@ import {
 } from "@/components/upload/generation-status"
 import { getVideoMeta } from "@/helpers/video-meta"
 import type {
-  FerroGenerateResponse,
+  FerroGenerateRequest,
+  FerroGenerateStreamEvent,
+  FerroGenerationSession,
+  FerroGenerationSessionIndexItem,
   FerroLayer,
+  FerroLayerEditStreamEvent,
+  FerroLayerMessage,
+  FerroLayerVersion,
   FerroRenderJobAcceptedResponse,
   FerroRenderJobResponse,
   FerroRenderMode,
   FerroRenderPayload,
 } from "@/lib/ferro-contracts"
+import {
+  listRecentGenerationSessions,
+  loadGenerationSession,
+  markRunningSessionsInterrupted,
+  saveGenerationSession,
+} from "@/lib/local-generation-store"
+import { readNdjsonStream } from "@/lib/ndjson"
 import { cn } from "@/lib/utils"
+import {
+  checkBrowserRenderSupport,
+  exportInBrowser,
+} from "@/remotion/client-render"
 
 const initialJobState: JobState = {
   tone: "idle",
@@ -51,40 +70,90 @@ const supportedVideoExtensions = [
   ".mkv",
 ]
 
-const CompositorPreview = dynamic(
-  () =>
-    import("@/components/preview/CompositorPreview").then(
-      (module) => module.CompositorPreview,
-    ),
-  {
-    ssr: false,
-  },
-)
-
-const GraphicCard = dynamic(
-  () =>
-    import("@/components/preview/GraphicCard").then(
-      (module) => module.GraphicCard,
-    ),
-  {
-    ssr: false,
-  },
-)
-
 function isLikelyVideoFile(file: File) {
   if (file.type.startsWith("video/")) return true
   const lowerName = file.name.toLowerCase()
   return supportedVideoExtensions.some((ext) => lowerName.endsWith(ext))
 }
 
-function getLayerCardKey(layer: FerroLayer, index: number) {
-  let hash = 0
+function buildSessionJobState(session: FerroGenerationSession): JobState {
+  const readyCount = session.layers.filter((layer) => layer.status === "ready").length
+  const generatingCount = session.layers.filter(
+    (layer) => layer.status === "generating",
+  ).length
+  const failedCount = session.layers.filter((layer) => layer.status === "failed").length
 
-  for (let i = 0; i < layer.code.length; i += 1) {
-    hash = (hash * 31 + layer.code.charCodeAt(i)) >>> 0
+  if (session.status === "complete") {
+    return {
+      tone: "success",
+      title: "Generation complete",
+      detail: `All ${readyCount} motion graphics are ready for preview and export.`,
+    }
   }
 
-  return `${index}-${hash}`
+  if (session.status === "failed") {
+    return {
+      tone: "error",
+      title: "Generation failed",
+      detail: session.error ?? "One or more layers failed to generate.",
+    }
+  }
+
+  if (session.status === "interrupted") {
+    return {
+      tone: "error",
+      title: "Generation interrupted",
+      detail:
+        session.error ??
+        "The page reloaded before the stream finished. Reopen the local session to inspect partial output.",
+    }
+  }
+
+  if (session.layers.length === 0) {
+    return {
+      tone: "loading",
+      title: "Starting generation…",
+      detail: "Detecting skills and preparing the layer plan.",
+    }
+  }
+
+  return {
+    tone: "loading",
+    title: `Generating ${readyCount}/${session.layers.length} graphics…`,
+    detail: `${generatingCount} in progress${failedCount ? ` · ${failedCount} failed` : ""}.`,
+  }
+}
+
+function createVersion(source: FerroLayerVersion["source"], layerId: string, code: string) {
+  return {
+    id: crypto.randomUUID(),
+    layerId,
+    source,
+    code,
+    createdAt: new Date().toISOString(),
+  } satisfies FerroLayerVersion
+}
+
+function getRenderPayload(session: FerroGenerationSession | null): FerroRenderPayload | null {
+  if (!session || session.status !== "complete") return null
+  if (session.fps == null || session.durationInFrames == null) return null
+
+  return {
+    layers: session.layers,
+    fps: session.fps,
+    width: session.width,
+    height: session.height,
+    durationInFrames: session.durationInFrames,
+  }
+}
+
+function getLayerCounts(layers: FerroLayer[]) {
+  return {
+    queued: layers.filter((layer) => layer.status === "queued").length,
+    generating: layers.filter((layer) => layer.status === "generating").length,
+    ready: layers.filter((layer) => layer.status === "ready").length,
+    failed: layers.filter((layer) => layer.status === "failed").length,
+  }
 }
 
 export default function Home() {
@@ -95,7 +164,8 @@ export default function Home() {
   const [transcriptFileName, setTranscriptFileName] = useState<string | null>(
     null,
   )
-  const [jobState, setJobState] = useState<JobState>(initialJobState)
+  const [fallbackJobState, setFallbackJobState] =
+    useState<JobState>(initialJobState)
   const [isDraggingVideo, setIsDraggingVideo] = useState(false)
   const [selectedModel, setSelectedModel] = useState(
     "anthropic:claude-sonnet-4-6",
@@ -104,9 +174,11 @@ export default function Home() {
     width: 1920,
     height: 1080,
   })
-  const [generationResult, setGenerationResult] =
-    useState<FerroGenerateResponse | null>(null)
-  const [layers, setLayers] = useState<FerroLayer[]>([])
+  const [currentSession, setCurrentSession] =
+    useState<FerroGenerationSession | null>(null)
+  const [recentSessions, setRecentSessions] = useState<
+    FerroGenerationSessionIndexItem[]
+  >([])
   const [renderMode, setRenderMode] = useState<FerroRenderMode>("server")
   const [renderJob, setRenderJob] = useState<FerroRenderJobResponse | null>(
     null,
@@ -120,9 +192,88 @@ export default function Home() {
   const [isStartingServerRender, setIsStartingServerRender] = useState(false)
   const [isClientRendering, setIsClientRendering] = useState(false)
 
-  const videoInputRef = useRef<HTMLInputElement>(null)
-  const formRef = useRef<HTMLFormElement>(null)
+  const formVideoInputRef = useRef<HTMLInputElement>(null)
+  const previewVideoInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
+  const sessionRef = useRef<FerroGenerationSession | null>(null)
+
+  const layers = currentSession?.layers ?? []
+  const payload = getRenderPayload(currentSession)
+  const displayedJobState = currentSession
+    ? buildSessionJobState(currentSession)
+    : fallbackJobState
+  const needsVideoReattach = Boolean(
+    currentSession?.request.hasSourceVideo && !videoObjectUrl,
+  )
+
+  const messagesByLayer = useMemo(() => {
+    const grouped = new Map<string, FerroLayerMessage[]>()
+
+    for (const message of currentSession?.messages ?? []) {
+      const current = grouped.get(message.layerId) ?? []
+      current.push(message)
+      grouped.set(message.layerId, current)
+    }
+
+    return grouped
+  }, [currentSession?.messages])
+
+  const versionsByLayer = useMemo(() => {
+    const grouped = new Map<string, FerroLayerVersion[]>()
+
+    for (const version of currentSession?.versions ?? []) {
+      const current = grouped.get(version.layerId) ?? []
+      current.push(version)
+      grouped.set(version.layerId, current)
+    }
+
+    return grouped
+  }, [currentSession?.versions])
+
+  useEffect(() => {
+    sessionRef.current = currentSession
+  }, [currentSession])
+
+  function refreshRecentSessions() {
+    setRecentSessions(listRecentGenerationSessions())
+  }
+
+  function commitSession(nextSession: FerroGenerationSession | null) {
+    if (!nextSession) {
+      sessionRef.current = null
+      setCurrentSession(null)
+      refreshRecentSessions()
+      return
+    }
+
+    const savedSession = saveGenerationSession(nextSession) ?? nextSession
+    sessionRef.current = savedSession
+    setCurrentSession(savedSession)
+    refreshRecentSessions()
+  }
+
+  function updateSession(
+    mutator: (session: FerroGenerationSession) => FerroGenerationSession,
+  ) {
+    const session = sessionRef.current
+    if (!session) return
+    commitSession(mutator(session))
+  }
+
+  function resetRenderState() {
+    setRenderJob(null)
+    setRenderJobId(null)
+    setRenderProgress(null)
+    setRenderError(null)
+    setRenderMessage("Choose a render mode, then export.")
+    setIsStartingServerRender(false)
+    setIsClientRendering(false)
+
+    if (clientDownloadUrl) {
+      URL.revokeObjectURL(clientDownloadUrl)
+      setClientDownloadUrl(null)
+    }
+  }
 
   useEffect(() => {
     function preventWindowFileDrop(event: globalThis.DragEvent) {
@@ -132,6 +283,17 @@ export default function Home() {
         : false
       if (!hasFiles) return
       event.preventDefault()
+    }
+
+    const interruptedSessions = markRunningSessionsInterrupted()
+    refreshRecentSessions()
+
+    if (interruptedSessions[0]) {
+      const session = interruptedSessions[0]
+      sessionRef.current = session
+      setCurrentSession(session)
+      setSelectedModel(session.request.model)
+      setResolution({ width: session.width, height: session.height })
     }
 
     window.addEventListener("dragover", preventWindowFileDrop)
@@ -227,26 +389,38 @@ export default function Home() {
     }
   }, [renderJobId])
 
-  function syncVideoInput(file: File | null) {
-    const input = videoInputRef.current
-    if (!input || typeof DataTransfer === "undefined") return
-    const transfer = new DataTransfer()
-    if (file) transfer.items.add(file)
-    input.files = transfer.files
+  function syncVideoInputs(file: File | null) {
+    if (typeof DataTransfer === "undefined") return
+
+    for (const input of [formVideoInputRef.current, previewVideoInputRef.current]) {
+      if (!input) continue
+
+      const transfer = new DataTransfer()
+      if (file) transfer.items.add(file)
+      input.files = transfer.files
+    }
   }
 
   async function attachVideoFile(file: File | null) {
     if (!file) {
       setVideoFile(null)
-      syncVideoInput(null)
-      setJobState(initialJobState)
+      syncVideoInputs(null)
+      if (videoObjectUrl) {
+        URL.revokeObjectURL(videoObjectUrl)
+        setVideoObjectUrl(null)
+      }
+      setFallbackJobState(initialJobState)
       return
     }
 
     if (!isLikelyVideoFile(file)) {
       setVideoFile(null)
-      syncVideoInput(null)
-      setJobState({
+      syncVideoInputs(null)
+      if (videoObjectUrl) {
+        URL.revokeObjectURL(videoObjectUrl)
+        setVideoObjectUrl(null)
+      }
+      setFallbackJobState({
         tone: "error",
         title: "Unsupported file",
         detail:
@@ -256,12 +430,26 @@ export default function Home() {
     }
 
     setVideoFile(file)
-    syncVideoInput(file)
-    setJobState({
+    syncVideoInputs(file)
+
+    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
+    setVideoObjectUrl(URL.createObjectURL(file))
+
+    setFallbackJobState({
       tone: "idle",
       title: "Source video attached",
       detail: "Fill in the remaining fields and hit Generate when ready.",
     })
+
+    updateSession((session) => ({
+      ...session,
+      request: {
+        ...session.request,
+        hasSourceVideo: true,
+        sourceVideoName: file.name,
+      },
+      updatedAt: new Date().toISOString(),
+    }))
 
     try {
       const meta = await getVideoMeta(file)
@@ -271,7 +459,30 @@ export default function Home() {
     }
   }
 
+  function openStoredSession(sessionId: string) {
+    const session = loadGenerationSession(sessionId)
+    if (!session) return
+
+    setSelectedModel(session.request.model)
+    setResolution({ width: session.width, height: session.height })
+    setTranscriptFileName(null)
+    setVideoFile(null)
+    syncVideoInputs(null)
+    if (videoObjectUrl) {
+      URL.revokeObjectURL(videoObjectUrl)
+      setVideoObjectUrl(null)
+    }
+    resetRenderState()
+    commitSession(session)
+    setStep(session.layers.length > 0 ? "preview" : "form")
+  }
+
   function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null
+    void attachVideoFile(file)
+  }
+
+  function handlePreviewVideoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null
     void attachVideoFile(file)
   }
@@ -328,7 +539,7 @@ export default function Home() {
     const instructions = (formData.get("prompt") as string) ?? ""
 
     if (!taste && !transcript && !instructions) {
-      setJobState({
+      setFallbackJobState({
         tone: "error",
         title: "Nothing to generate",
         detail:
@@ -337,7 +548,10 @@ export default function Home() {
       return
     }
 
-    setJobState({
+    commitSession(null)
+    setStep("form")
+    resetRenderState()
+    setFallbackJobState({
       tone: "loading",
       title: "Generating graphics…",
       detail:
@@ -354,19 +568,23 @@ export default function Home() {
       }
     }
 
+    const request: FerroGenerateRequest = {
+      taste,
+      transcript,
+      instructions,
+      model: selectedModel,
+      width: resolution.width,
+      height: resolution.height,
+      videoDurationSeconds,
+      hasSourceVideo: Boolean(videoFile),
+      sourceVideoName: videoFile?.name ?? null,
+    }
+
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch("/api/generate/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taste,
-          transcript,
-          instructions,
-          model: selectedModel,
-          width: resolution.width,
-          height: resolution.height,
-          videoDurationSeconds,
-        }),
+        body: JSON.stringify(request),
       })
 
       if (!res.ok) {
@@ -374,23 +592,130 @@ export default function Home() {
         throw new Error(err.error ?? `HTTP ${res.status}`)
       }
 
-      const data: FerroGenerateResponse = await res.json()
-
-      if (videoFile) {
-        if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
-        setVideoObjectUrl(URL.createObjectURL(videoFile))
-      }
-
-      setRenderJob(null)
-      setRenderJobId(null)
-      setRenderProgress(null)
-      setRenderError(null)
-      setRenderMessage("Choose a render mode, then export.")
-      setGenerationResult(data)
-      setLayers(data.layers)
-      setStep("preview")
+      await readNdjsonStream<FerroGenerateStreamEvent>(res, async (streamEvent) => {
+        switch (streamEvent.type) {
+          case "job-started": {
+            commitSession({
+              id: streamEvent.generationId,
+              status: "running",
+              request: streamEvent.request,
+              skills: [],
+              layers: [],
+              versions: [],
+              messages: [],
+              fps: null,
+              width: streamEvent.request.width,
+              height: streamEvent.request.height,
+              durationInFrames: null,
+              error: null,
+              createdAt: streamEvent.createdAt,
+              updatedAt: streamEvent.createdAt,
+              completedAt: null,
+            })
+            break
+          }
+          case "skills-ready": {
+            updateSession((session) => ({
+              ...session,
+              skills: streamEvent.skills,
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "plan-ready": {
+            updateSession((session) => ({
+              ...session,
+              layers: streamEvent.layers,
+              fps: streamEvent.fps,
+              width: streamEvent.width,
+              height: streamEvent.height,
+              durationInFrames: streamEvent.durationInFrames,
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "layer-started": {
+            updateSession((session) => ({
+              ...session,
+              layers: session.layers.map((layer) =>
+                layer.id === streamEvent.layerId
+                  ? {
+                      ...layer,
+                      status: "generating",
+                      error: null,
+                    }
+                  : layer,
+              ),
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "layer-completed": {
+            updateSession((session) => ({
+              ...session,
+              layers: session.layers.map((layer) =>
+                layer.id === streamEvent.layer.id ? streamEvent.layer : layer,
+              ),
+              versions: [...session.versions, streamEvent.version],
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "layer-failed": {
+            updateSession((session) => ({
+              ...session,
+              layers: session.layers.map((layer) =>
+                layer.id === streamEvent.layerId
+                  ? {
+                      ...layer,
+                      status: "failed",
+                      error: streamEvent.error,
+                    }
+                  : layer,
+              ),
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "job-completed": {
+            updateSession((session) => ({
+              ...session,
+              status: "complete",
+              skills: streamEvent.response.skills,
+              layers: streamEvent.response.layers,
+              fps: streamEvent.response.fps,
+              width: streamEvent.response.width,
+              height: streamEvent.response.height,
+              durationInFrames: streamEvent.response.durationInFrames,
+              error: null,
+              updatedAt: streamEvent.completedAt,
+              completedAt: streamEvent.completedAt,
+            }))
+            setStep("preview")
+            break
+          }
+          case "job-failed": {
+            updateSession((session) => ({
+              ...session,
+              status: "failed",
+              error: streamEvent.error,
+              updatedAt: streamEvent.completedAt,
+              completedAt: streamEvent.completedAt,
+            }))
+            break
+          }
+        }
+      })
     } catch (error) {
-      setJobState({
+      updateSession((session) => ({
+        ...session,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Generation failed",
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      }))
+
+      setFallbackJobState({
         tone: "error",
         title: "Generation failed",
         detail: error instanceof Error ? error.message : "Something went wrong.",
@@ -398,21 +723,157 @@ export default function Home() {
     }
   }
 
-  function handleLayerCodeChange(index: number, code: string) {
-    setLayers((prev) =>
-      prev.map((layer, i) => (i === index ? { ...layer, code } : layer)),
-    )
+  function handleLayerCodeChange(layerId: string, code: string) {
+    const version = createVersion("manual", layerId, code)
+
+    updateSession((session) => ({
+      ...session,
+      layers: session.layers.map((layer) =>
+        layer.id === layerId
+          ? {
+              ...layer,
+              code,
+              currentVersionId: version.id,
+              error: null,
+            }
+          : layer,
+      ),
+      versions: [...session.versions, version],
+      updatedAt: version.createdAt,
+    }))
   }
 
-  function getRenderPayload(): FerroRenderPayload | null {
-    if (!generationResult) return null
+  async function handleLayerEditPrompt(layerId: string, prompt: string) {
+    const session = sessionRef.current
+    if (!session) return
 
-    return {
-      layers,
-      fps: generationResult.fps,
-      width: generationResult.width,
-      height: generationResult.height,
-      durationInFrames: generationResult.durationInFrames,
+    const layer = session.layers.find((candidate) => candidate.id === layerId)
+    if (!layer || layer.status !== "ready") return
+
+    const userMessage: FerroLayerMessage = {
+      id: crypto.randomUUID(),
+      layerId,
+      role: "user",
+      text: prompt,
+      createdAt: new Date().toISOString(),
+      status: "complete",
+      versionId: layer.currentVersionId,
+    }
+
+    const pendingAssistantMessage: FerroLayerMessage = {
+      id: crypto.randomUUID(),
+      layerId,
+      role: "assistant",
+      text: "Updating overlay…",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+      versionId: null,
+    }
+
+    const requestMessages = [
+      ...(messagesByLayer.get(layerId) ?? []).filter(
+        (message) => message.status === "complete",
+      ),
+      userMessage,
+    ]
+
+    updateSession((activeSession) => ({
+      ...activeSession,
+      messages: [
+        ...activeSession.messages,
+        userMessage,
+        pendingAssistantMessage,
+      ],
+      updatedAt: pendingAssistantMessage.createdAt,
+    }))
+
+    try {
+      const res = await fetch("/api/layers/edit/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generationId: session.id,
+          layerId,
+          model: session.request.model,
+          skills: session.skills,
+          layer,
+          currentCode: layer.code,
+          messages: requestMessages,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Layer edit failed" }))
+        throw new Error(err.error ?? `HTTP ${res.status}`)
+      }
+
+      await readNdjsonStream<FerroLayerEditStreamEvent>(res, async (streamEvent) => {
+        switch (streamEvent.type) {
+          case "edit-started":
+            break
+          case "edit-completed": {
+            updateSession((activeSession) => ({
+              ...activeSession,
+              layers: activeSession.layers.map((candidate) =>
+                candidate.id === layerId
+                  ? {
+                      ...candidate,
+                      code: streamEvent.code,
+                      currentVersionId: streamEvent.version.id,
+                      error: null,
+                    }
+                  : candidate,
+              ),
+              versions: [...activeSession.versions, streamEvent.version],
+              messages: activeSession.messages.map((message) =>
+                message.id === pendingAssistantMessage.id
+                  ? {
+                      ...message,
+                      text: streamEvent.reply,
+                      status: "complete",
+                      versionId: streamEvent.version.id,
+                    }
+                  : message,
+              ),
+              updatedAt: streamEvent.version.createdAt,
+            }))
+            break
+          }
+          case "edit-failed": {
+            updateSession((activeSession) => ({
+              ...activeSession,
+              messages: activeSession.messages.map((message) =>
+                message.id === pendingAssistantMessage.id
+                  ? {
+                      ...message,
+                      text: streamEvent.error,
+                      status: "failed",
+                    }
+                  : message,
+              ),
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+        }
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Layer edit failed"
+
+      updateSession((activeSession) => ({
+        ...activeSession,
+        messages: activeSession.messages.map((candidate) =>
+          candidate.id === pendingAssistantMessage.id
+            ? {
+                ...candidate,
+                text: message,
+                status: "failed",
+              }
+            : candidate,
+        ),
+        updatedAt: new Date().toISOString(),
+      }))
     }
   }
 
@@ -424,8 +885,7 @@ export default function Home() {
   }
 
   async function handleServerRender() {
-    const payload = getRenderPayload()
-    if (!payload) return
+    if (!payload || needsVideoReattach) return
 
     setIsStartingServerRender(true)
     if (clientDownloadUrl) {
@@ -469,8 +929,7 @@ export default function Home() {
   }
 
   async function handleClientRender() {
-    const payload = getRenderPayload()
-    if (!payload) return
+    if (!payload || needsVideoReattach) return
 
     setIsClientRendering(true)
     setRenderError(null)
@@ -480,10 +939,6 @@ export default function Home() {
     setRenderJobId(null)
 
     try {
-      const { checkBrowserRenderSupport, exportInBrowser } = await import(
-        "@/remotion/client-render"
-      )
-
       const capability = await checkBrowserRenderSupport(
         payload,
         Boolean(videoObjectUrl),
@@ -528,7 +983,7 @@ export default function Home() {
     await handleClientRender()
   }
 
-  const payload = getRenderPayload()
+  const currentLayerCounts = getLayerCounts(layers)
   const serverIsBusy =
     isStartingServerRender ||
     renderJob?.status === "queued" ||
@@ -539,14 +994,12 @@ export default function Home() {
   const canRetryClient = renderMode === "server" && Boolean(renderError)
   const canDownloadClient =
     renderMode === "client" && Boolean(clientDownloadUrl)
-  const serverDownloadUrl =
-    renderJob?.status === "complete" ? renderJob.downloadUrl : null
 
-  if (step === "preview" && generationResult) {
+  if (step === "preview" && currentSession && currentSession.layers.length > 0) {
     return (
       <main className="min-h-screen px-4 py-8 text-white sm:px-6 sm:py-10">
         <div className="mx-auto w-full max-w-6xl">
-          <div className="mb-8 flex items-center gap-4">
+          <div className="mb-8 flex flex-wrap items-center gap-4">
             <Button
               type="button"
               variant="ghost"
@@ -557,8 +1010,8 @@ export default function Home() {
               <ArrowLeft className="size-4" />
               Back to form
             </Button>
-            <div className="flex gap-2">
-              {generationResult.skills.map((skill) => (
+            <div className="flex flex-wrap gap-2">
+              {currentSession.skills.map((skill) => (
                 <span
                   key={skill}
                   className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-white/55"
@@ -569,181 +1022,236 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mb-8 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-2xl">
-                <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
-                  Export
-                </p>
-                <h2 className="mt-2 text-2xl font-medium tracking-[-0.04em] text-white">
-                  Render MP4 output
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-white/62">
-                  Server rendering is primary for development. Browser rendering
-                  stays available as a fallback when the server path is
-                  unavailable or unsupported.
-                </p>
-              </div>
+          {needsVideoReattach ? (
+            <div className="mb-8 rounded-[1.5rem] border border-amber-400/20 bg-amber-500/10 px-5 py-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 size-5 text-amber-300" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-200">
+                      Reattach the source video for composite preview and export.
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-amber-100/75">
+                      Local sessions do not persist the uploaded video blob. The
+                      layer code and chat history are restored, but the original
+                      video must be attached again.
+                    </p>
+                  </div>
+                </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={renderMode === "server" ? "secondary" : "ghost"}
-                  onClick={() => setRenderMode("server")}
-                  className={cn(
-                    "rounded-xl border border-white/10 px-4 text-white",
-                    renderMode === "server"
-                      ? "bg-white/15 hover:bg-white/20"
-                      : "bg-black/30 hover:bg-white/[0.08]",
-                  )}
-                >
-                  Server
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={renderMode === "client" ? "secondary" : "ghost"}
-                  onClick={() => setRenderMode("client")}
-                  className={cn(
-                    "rounded-xl border border-white/10 px-4 text-white",
-                    renderMode === "client"
-                      ? "bg-white/15 hover:bg-white/20"
-                      : "bg-black/30 hover:bg-white/[0.08]",
-                  )}
-                >
-                  Client
-                </Button>
+                <div className="shrink-0">
+                  <label
+                    htmlFor="preview-source-video"
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "cursor-pointer rounded-xl border-white/10 bg-black/35 px-4 text-white hover:bg-white/[0.08]",
+                    )}
+                  >
+                    <Upload className="size-3.5" />
+                    Reattach video
+                  </label>
+                  <input
+                    id="preview-source-video"
+                    type="file"
+                    ref={previewVideoInputRef}
+                    accept="video/*"
+                    suppressHydrationWarning
+                    className="sr-only"
+                    onChange={handlePreviewVideoChange}
+                  />
+                </div>
               </div>
             </div>
+          ) : null}
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-              <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4">
-                <p className="text-sm font-medium text-white">
-                  {renderMode === "server"
-                    ? "Server render mode"
-                    : "Client render mode"}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-white/62">
-                  {renderMessage}
-                </p>
-                {payload ? (
+          {payload ? (
+            <div className="mb-8 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-2xl">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
+                    Export
+                  </p>
+                  <h2 className="mt-2 text-2xl font-medium tracking-[-0.04em] text-white">
+                    Render MP4 output
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/62">
+                    Server rendering is primary for development. Browser
+                    rendering stays available as a fallback when the server path
+                    is unavailable or unsupported.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={renderMode === "server" ? "secondary" : "ghost"}
+                    onClick={() => setRenderMode("server")}
+                    className={cn(
+                      "rounded-xl border border-white/10 px-4 text-white",
+                      renderMode === "server"
+                        ? "bg-white/15 hover:bg-white/20"
+                        : "bg-black/30 hover:bg-white/[0.08]",
+                    )}
+                  >
+                    Server
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={renderMode === "client" ? "secondary" : "ghost"}
+                    onClick={() => setRenderMode("client")}
+                    className={cn(
+                      "rounded-xl border border-white/10 px-4 text-white",
+                      renderMode === "client"
+                        ? "bg-white/15 hover:bg-white/20"
+                        : "bg-black/30 hover:bg-white/[0.08]",
+                    )}
+                  >
+                    Client
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4">
+                  <p className="text-sm font-medium text-white">
+                    {renderMode === "server"
+                      ? "Server render mode"
+                      : "Client render mode"}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-white/62">
+                    {needsVideoReattach
+                      ? "Reattach the original source video before exporting."
+                      : renderMessage}
+                  </p>
                   <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.24em] text-white/38">
                     {payload.width}×{payload.height} · {payload.fps}fps ·{" "}
                     {payload.durationInFrames} frames
                   </p>
-                ) : null}
-                {typeof renderProgress === "number" ? (
-                  <div className="mt-4">
-                    <div className="h-2 overflow-hidden rounded-full bg-white/8">
-                      <div
-                        className="h-full bg-white transition-[width]"
-                        style={{ width: `${Math.round(renderProgress * 100)}%` }}
-                      />
+                  {typeof renderProgress === "number" ? (
+                    <div className="mt-4">
+                      <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                        <div
+                          className="h-full bg-white transition-[width]"
+                          style={{ width: `${Math.round(renderProgress * 100)}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-white/45">
+                        {Math.round(renderProgress * 100)}% complete
+                      </p>
                     </div>
-                    <p className="mt-2 text-xs text-white/45">
-                      {Math.round(renderProgress * 100)}% complete
-                    </p>
-                  </div>
-                ) : null}
-                {renderError ? (
-                  <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-3 text-sm text-red-300">
-                    {renderError}
-                  </div>
-                ) : null}
-              </div>
+                  ) : null}
+                  {renderError ? (
+                    <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-3 text-sm text-red-300">
+                      {renderError}
+                    </div>
+                  ) : null}
+                </div>
 
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  size="lg"
-                  onClick={() => void handleExport()}
-                  disabled={isExporting}
-                  className="h-12 rounded-[1rem] bg-white px-5 text-black hover:bg-zinc-200"
-                >
-                  <Sparkles className="size-4" />
-                  {renderMode === "server"
-                    ? serverIsBusy
-                      ? "Rendering on server…"
-                      : "Start server render"
-                    : isClientRendering
-                      ? "Rendering in browser…"
-                      : "Render in browser"}
-                </Button>
-
-                {canDownloadServer && renderJob?.downloadUrl ? (
+                <div className="flex flex-wrap gap-3">
                   <Button
                     type="button"
                     size="lg"
-                    variant="outline"
-                    onClick={() =>
-                      serverDownloadUrl
-                        ? downloadFromUrl(
-                            serverDownloadUrl,
-                            `ferro-server-render-${renderJob.jobId}.mp4`,
-                          )
-                        : undefined
-                    }
-                    className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                    onClick={() => void handleExport()}
+                    disabled={isExporting || needsVideoReattach}
+                    className="h-12 rounded-[1rem] bg-white px-5 text-black hover:bg-zinc-200"
                   >
-                    <Download className="size-4" />
-                    Download MP4
+                    <Sparkles className="size-4" />
+                    {renderMode === "server"
+                      ? serverIsBusy
+                        ? "Rendering on server…"
+                        : "Start server render"
+                      : isClientRendering
+                        ? "Rendering in browser…"
+                        : "Render in browser"}
                   </Button>
-                ) : null}
 
-                {canDownloadClient && clientDownloadUrl ? (
-                  <Button
-                    type="button"
-                    size="lg"
-                    variant="outline"
-                    onClick={() =>
-                      downloadFromUrl(
-                        clientDownloadUrl,
-                        "ferro-browser-render.mp4",
-                      )
-                    }
-                    className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
-                  >
-                    <Download className="size-4" />
-                    Download MP4
-                  </Button>
-                ) : null}
+                  {canDownloadServer && renderJob?.downloadUrl ? (
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="outline"
+                      onClick={() =>
+                        downloadFromUrl(
+                          renderJob?.downloadUrl ?? "",
+                          `ferro-server-render-${renderJob?.jobId}.mp4`,
+                        )
+                      }
+                      className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                    >
+                      <Download className="size-4" />
+                      Download MP4
+                    </Button>
+                  ) : null}
 
-                {canRetryClient ? (
-                  <Button
-                    type="button"
-                    size="lg"
-                    variant="outline"
-                    onClick={() => setRenderMode("client")}
-                    className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
-                  >
-                    Retry with client rendering
-                  </Button>
-                ) : null}
+                  {canDownloadClient && clientDownloadUrl ? (
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="outline"
+                      onClick={() =>
+                        downloadFromUrl(
+                          clientDownloadUrl,
+                          "ferro-browser-render.mp4",
+                        )
+                      }
+                      className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                    >
+                      <Download className="size-4" />
+                      Download MP4
+                    </Button>
+                  ) : null}
+
+                  {canRetryClient ? (
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="outline"
+                      onClick={() => setRenderMode("client")}
+                      className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                    >
+                      Retry with client rendering
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="mb-8 rounded-[1.5rem] border border-white/12 bg-white/[0.03] px-5 py-4">
+              <p className="text-sm font-medium text-white">
+                Export unavailable for incomplete local sessions.
+              </p>
+              <p className="mt-1 text-sm leading-6 text-white/62">
+                Finish a full generation before exporting. You can still inspect
+                completed layers and continue editing them below.
+              </p>
+            </div>
+          )}
 
           <div className="mb-8">
             <CompositorPreview
               videoObjectUrl={videoObjectUrl}
-              layers={layers}
-              fps={generationResult.fps}
-              width={generationResult.width}
-              height={generationResult.height}
-              durationInFrames={generationResult.durationInFrames}
+              layers={currentSession.layers}
+              fps={currentSession.fps ?? 30}
+              width={currentSession.width}
+              height={currentSession.height}
+              durationInFrames={currentSession.durationInFrames ?? 1}
             />
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            {layers.map((layer, i) => (
+            {currentSession.layers.map((layer) => (
               <GraphicCard
-                key={getLayerCardKey(layer, i)}
+                key={`${layer.id}:${layer.currentVersionId ?? "draft"}`}
                 layer={layer}
-                fps={generationResult.fps}
-                width={generationResult.width}
-                height={generationResult.height}
-                onCodeChange={(code) => handleLayerCodeChange(i, code)}
+                fps={currentSession.fps ?? 30}
+                width={currentSession.width}
+                height={currentSession.height}
+                messages={messagesByLayer.get(layer.id) ?? []}
+                versionCount={(versionsByLayer.get(layer.id) ?? []).length}
+                onCodeChange={(code) => handleLayerCodeChange(layer.id, code)}
+                onEditPrompt={(prompt) => handleLayerEditPrompt(layer.id, prompt)}
               />
             ))}
           </div>
@@ -769,7 +1277,7 @@ export default function Home() {
             </p>
           </div>
 
-          <form ref={formRef} className="space-y-6" onSubmit={handleGenerate}>
+          <form className="space-y-6" onSubmit={handleGenerate}>
             <label
               htmlFor="source-video"
               className={cn(
@@ -785,7 +1293,7 @@ export default function Home() {
                 id="source-video"
                 type="file"
                 accept="video/*"
-                ref={videoInputRef}
+                ref={formVideoInputRef}
                 suppressHydrationWarning
                 className="sr-only"
                 onChange={handleVideoChange}
@@ -835,7 +1343,10 @@ export default function Home() {
 
             {!videoFile ? (
               <div className="rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
-                <ResolutionSelector value={resolution} onChange={setResolution} />
+                <ResolutionSelector
+                  value={resolution}
+                  onChange={setResolution}
+                />
               </div>
             ) : null}
 
@@ -905,8 +1416,127 @@ export default function Home() {
               />
             </div>
 
-            <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
-              <GenerationStatus jobState={jobState} />
+            <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
+              <GenerationStatus jobState={displayedJobState} />
+
+              {currentSession ? (
+                <div className="rounded-[1.35rem] border border-white/10 bg-black/35 px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/40">
+                        Current local session
+                      </p>
+                      <p className="mt-1 text-sm text-white/72">
+                        {currentLayerCounts.ready}/{layers.length} ready
+                        {currentLayerCounts.generating
+                          ? ` · ${currentLayerCounts.generating} generating`
+                          : ""}
+                        {currentLayerCounts.failed
+                          ? ` · ${currentLayerCounts.failed} failed`
+                          : ""}
+                      </p>
+                    </div>
+
+                    {currentSession.status !== "running" &&
+                    currentSession.layers.length > 0 ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setStep("preview")}
+                        className="rounded-xl border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.08]"
+                      >
+                        Open preview
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {currentSession.layers.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      {currentSession.layers.map((layer) => (
+                        <div
+                          key={layer.id}
+                          className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-white/85">
+                              {layer.title}
+                            </p>
+                            <p className="mt-0.5 text-xs text-white/45">
+                              {Math.round((layer.from / (currentSession.fps ?? 30)) * 10) / 10}
+                              s -{" "}
+                              {Math.round(
+                                ((layer.from + layer.durationInFrames) /
+                                  (currentSession.fps ?? 30)) *
+                                  10,
+                              ) / 10}
+                              s
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em]",
+                              layer.status === "ready" &&
+                                "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+                              layer.status === "generating" &&
+                                "border-blue-400/30 bg-blue-500/10 text-blue-200",
+                              layer.status === "queued" &&
+                                "border-white/10 bg-white/[0.06] text-white/55",
+                              layer.status === "failed" &&
+                                "border-red-400/30 bg-red-500/10 text-red-200",
+                            )}
+                          >
+                            {layer.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-sm text-white/55">
+                      Waiting for the planner to return the first set of layers.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {recentSessions.length > 0 ? (
+                <div className="rounded-[1.35rem] border border-white/10 bg-black/35 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/40">
+                        Recent local sessions
+                      </p>
+                      <p className="mt-1 text-sm text-white/62">
+                        Reopen a locally stored generation session in this browser.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    {recentSessions.map((session) => (
+                      <button
+                        key={session.id}
+                        type="button"
+                        onClick={() => openStoredSession(session.id)}
+                        className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3 text-left transition-colors hover:bg-white/[0.05]"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white/85">
+                            {session.title}
+                          </p>
+                          <p className="mt-1 text-xs text-white/45">
+                            {session.layerCount} layer
+                            {session.layerCount === 1 ? "" : "s"} · {session.model}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-white/55">
+                          {session.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <ModelSelector
                 value={selectedModel}
@@ -915,13 +1545,15 @@ export default function Home() {
               />
 
               <Button
-                type="button"
+                type="submit"
                 size="lg"
-                onClick={() => formRef.current?.requestSubmit()}
-                className="h-14 min-w-[240px] rounded-[1.15rem] bg-white px-6 text-black hover:bg-zinc-200"
+                disabled={currentSession?.status === "running"}
+                className="h-14 min-w-[240px] self-center rounded-[1.15rem] bg-white px-6 text-black hover:bg-zinc-200"
               >
                 <Sparkles className="size-4" />
-                Generate Remotion
+                {currentSession?.status === "running"
+                  ? "Generating Remotion…"
+                  : "Generate Remotion"}
               </Button>
             </div>
           </form>

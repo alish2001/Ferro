@@ -36,7 +36,7 @@ export async function GET(
   const fileStats = await stat(job.outputPath)
   const stream = Readable.toWeb(createReadStream(job.outputPath))
 
-  return new Response(stream as ReadableStream, {
+  return new Response(stream as unknown as ReadableStream, {
     headers: {
       "Cache-Control": "no-store",
       "Content-Length": String(fileStats.size),
