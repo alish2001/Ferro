@@ -7,15 +7,15 @@
   "private": true,
   "dependencies": {
     "@babel/standalone": "^7.29.2",
-    "@remotion/cli": "4.0.443",
+    "@remotion/cli": "^4.0.443",
     "@remotion/lottie": "^4.0.443",
     "@remotion/shapes": "^4.0.443",
-    "@remotion/tailwind-v4": "4.0.443",
+    "@remotion/tailwind-v4": "^4.0.443",
     "@remotion/three": "^4.0.443",
     "@remotion/transitions": "^4.0.443",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "remotion": "4.0.443",
+    "remotion": "^4.0.443",
     "tailwindcss": "4.2.2",
     "three": "^0.183.2"
   },

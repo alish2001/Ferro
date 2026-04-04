@@ -9,6 +9,7 @@
   "scripts": {
     "dev:web": "bun run --cwd apps/web dev",
     "dev:render": "bun run --cwd packages/render-core dev",
+    "build:render-bundle": "bun run --cwd packages/render-core build",
     "lint": "bun run lint:web && bun run lint:render",
     "lint:web": "bun run --cwd apps/web lint",
     "lint:render": "bun run --cwd packages/render-core lint",

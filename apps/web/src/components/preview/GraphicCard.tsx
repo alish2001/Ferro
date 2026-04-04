@@ -1,11 +1,12 @@
 "use client"
 
 import { compileCode } from "@/remotion/compiler"
-import type { FerroLayer } from "@/app/api/generate/route"
+import type { FerroLayer } from "@/lib/ferro-contracts"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import dynamic from "next/dynamic"
-import { useEffect, useMemo, useState } from "react"
+import type { ComponentType } from "react"
+import { useState } from "react"
 
 const Player = dynamic(
   () => import("@remotion/player").then((m) => m.Player),
@@ -28,20 +29,23 @@ const TYPE_LABELS: Record<string, string> = {
   "outro-card": "Outro Card",
 }
 
-export function GraphicCard({ layer, fps, width, height, onCodeChange }: GraphicCardProps) {
-  const [editCode, setEditCode] = useState(layer.code)
-  const [compiledComponent, setCompiledComponent] = useState<React.ComponentType | null>(null)
-  const [compileError, setCompileError] = useState<string | null>(null)
-  const [isDirty, setIsDirty] = useState(false)
+const EmptyComponent: ComponentType = () => null
 
-  // Compile on mount and whenever layer.code changes externally
-  useEffect(() => {
-    const { Component, error } = compileCode(layer.code)
-    setCompiledComponent(() => Component)
-    setCompileError(error)
-    setEditCode(layer.code)
-    setIsDirty(false)
-  }, [layer.code])
+export function GraphicCard({
+  layer,
+  fps,
+  width,
+  height,
+  onCodeChange,
+}: GraphicCardProps) {
+  const [editCode, setEditCode] = useState(layer.code)
+  const [compiledComponent, setCompiledComponent] = useState<ComponentType | null>(
+    () => compileCode(layer.code).Component,
+  )
+  const [compileError, setCompileError] = useState<string | null>(() =>
+    compileCode(layer.code).error,
+  )
+  const [isDirty, setIsDirty] = useState(false)
 
   function handleRerun() {
     const { Component, error } = compileCode(editCode)
@@ -53,10 +57,7 @@ export function GraphicCard({ layer, fps, width, height, onCodeChange }: Graphic
     }
   }
 
-  const playerComponent = useMemo(
-    () => compiledComponent ?? (() => null),
-    [compiledComponent],
-  )
+  const playerComponent = compiledComponent ?? EmptyComponent
 
   const typeLabel = TYPE_LABELS[layer.type] ?? layer.type
 
@@ -68,12 +69,13 @@ export function GraphicCard({ layer, fps, width, height, onCodeChange }: Graphic
           <span className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-white/55">
             {typeLabel}
           </span>
-          <p className="mt-1.5 text-sm font-medium text-white/80 leading-5">
+          <p className="mt-1.5 text-sm leading-5 font-medium text-white/80">
             {layer.title}
           </p>
         </div>
         <span className="font-mono text-[10px] text-white/30">
-          {Math.round(layer.from / fps * 10) / 10}s — {Math.round((layer.from + layer.durationInFrames) / fps * 10) / 10}s
+          {Math.round((layer.from / fps) * 10) / 10}s —{" "}
+          {Math.round(((layer.from + layer.durationInFrames) / fps) * 10) / 10}s
         </span>
       </div>
 

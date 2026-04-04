@@ -14,6 +14,7 @@ Remotion render package.
 bun install
 bun run dev:web
 bun run dev:render
+bun run build:render-bundle
 bun run lint
 bun run typecheck
 ```

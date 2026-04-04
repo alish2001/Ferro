@@ -6,25 +6,40 @@ import {
   ArrowLeft,
   Captions,
   Clapperboard,
+  Download,
   FileVideo,
   Sparkles,
   Upload,
   WandSparkles,
 } from "lucide-react"
 
+import { CompositorPreview } from "@/components/preview/CompositorPreview"
+import { GraphicCard } from "@/components/preview/GraphicCard"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { ModelSelector } from "@/components/ui/model-selector"
+import {
+  ResolutionSelector,
+  type Resolution,
+} from "@/components/ui/resolution-selector"
 import { FieldCard } from "@/components/upload/field-card"
 import {
   GenerationStatus,
   type JobState,
 } from "@/components/upload/generation-status"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { ModelSelector } from "@/components/ui/model-selector"
-import { ResolutionSelector, type Resolution } from "@/components/ui/resolution-selector"
-import { CompositorPreview } from "@/components/preview/CompositorPreview"
-import { GraphicCard } from "@/components/preview/GraphicCard"
 import { getVideoMeta } from "@/helpers/video-meta"
-import type { FerroGenerateResponse, FerroLayer } from "@/app/api/generate/route"
+import type {
+  FerroGenerateResponse,
+  FerroLayer,
+  FerroRenderJobAcceptedResponse,
+  FerroRenderJobResponse,
+  FerroRenderMode,
+  FerroRenderPayload,
+} from "@/lib/ferro-contracts"
 import { cn } from "@/lib/utils"
+import {
+  checkBrowserRenderSupport,
+  exportInBrowser,
+} from "@/remotion/client-render"
 
 const initialJobState: JobState = {
   tone: "idle",
@@ -32,7 +47,14 @@ const initialJobState: JobState = {
   detail: "Fill in the fields below, then hit Generate.",
 }
 
-const supportedVideoExtensions = [".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"]
+const supportedVideoExtensions = [
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+  ".avi",
+  ".mkv",
+]
 
 function isLikelyVideoFile(file: File) {
   if (file.type.startsWith("video/")) return true
@@ -40,17 +62,48 @@ function isLikelyVideoFile(file: File) {
   return supportedVideoExtensions.some((ext) => lowerName.endsWith(ext))
 }
 
+function getLayerCardKey(layer: FerroLayer, index: number) {
+  let hash = 0
+
+  for (let i = 0; i < layer.code.length; i += 1) {
+    hash = (hash * 31 + layer.code.charCodeAt(i)) >>> 0
+  }
+
+  return `${index}-${hash}`
+}
+
 export default function Home() {
   const [step, setStep] = useState<"form" | "preview">("form")
   const [videoFile, setVideoFile] = useState<File | null>(null)
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null)
-  const [transcriptFileName, setTranscriptFileName] = useState<string | null>(null)
+  const [clientDownloadUrl, setClientDownloadUrl] = useState<string | null>(null)
+  const [transcriptFileName, setTranscriptFileName] = useState<string | null>(
+    null,
+  )
   const [jobState, setJobState] = useState<JobState>(initialJobState)
   const [isDraggingVideo, setIsDraggingVideo] = useState(false)
-  const [selectedModel, setSelectedModel] = useState("anthropic:claude-sonnet-4-6")
-  const [resolution, setResolution] = useState<Resolution>({ width: 1920, height: 1080 })
-  const [generationResult, setGenerationResult] = useState<FerroGenerateResponse | null>(null)
+  const [selectedModel, setSelectedModel] = useState(
+    "anthropic:claude-sonnet-4-6",
+  )
+  const [resolution, setResolution] = useState<Resolution>({
+    width: 1920,
+    height: 1080,
+  })
+  const [generationResult, setGenerationResult] =
+    useState<FerroGenerateResponse | null>(null)
   const [layers, setLayers] = useState<FerroLayer[]>([])
+  const [renderMode, setRenderMode] = useState<FerroRenderMode>("server")
+  const [renderJob, setRenderJob] = useState<FerroRenderJobResponse | null>(
+    null,
+  )
+  const [renderJobId, setRenderJobId] = useState<string | null>(null)
+  const [renderProgress, setRenderProgress] = useState<number | null>(null)
+  const [renderMessage, setRenderMessage] = useState(
+    "Choose a render mode, then export.",
+  )
+  const [renderError, setRenderError] = useState<string | null>(null)
+  const [isStartingServerRender, setIsStartingServerRender] = useState(false)
+  const [isClientRendering, setIsClientRendering] = useState(false)
 
   const videoInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
@@ -58,7 +111,9 @@ export default function Home() {
   useEffect(() => {
     function preventWindowFileDrop(event: globalThis.DragEvent) {
       const items = event.dataTransfer?.items
-      const hasFiles = items ? Array.from(items).some((item) => item.kind === "file") : false
+      const hasFiles = items
+        ? Array.from(items).some((item) => item.kind === "file")
+        : false
       if (!hasFiles) return
       event.preventDefault()
     }
@@ -72,12 +127,85 @@ export default function Home() {
     }
   }, [])
 
-  // Revoke previous object URL when video changes
   useEffect(() => {
     return () => {
       if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
     }
   }, [videoObjectUrl])
+
+  useEffect(() => {
+    return () => {
+      if (clientDownloadUrl) URL.revokeObjectURL(clientDownloadUrl)
+    }
+  }, [clientDownloadUrl])
+
+  useEffect(() => {
+    if (!renderJobId) return
+
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/render/${renderJobId}`, {
+          cache: "no-store",
+        })
+
+        if (!res.ok) {
+          const err = await res
+            .json()
+            .catch(() => ({ error: "Render job unavailable" }))
+          throw new Error(err.error ?? "Render job unavailable")
+        }
+
+        const data: FerroRenderJobResponse = await res.json()
+        if (cancelled) return
+
+        setRenderJob(data)
+        setRenderProgress(data.progress?.progress ?? null)
+
+        if (data.status === "queued") {
+          setRenderMessage(
+            "Server render queued. Waiting for the local worker.",
+          )
+          timeoutId = setTimeout(poll, 1000)
+          return
+        }
+
+        if (data.status === "rendering") {
+          setRenderMessage("Server render in progress.")
+          timeoutId = setTimeout(poll, 1000)
+          return
+        }
+
+        if (data.status === "complete") {
+          setRenderError(null)
+          setRenderMessage("Server render finished. Download the MP4 when ready.")
+          return
+        }
+
+        if (data.status === "error") {
+          setRenderError(data.error ?? "Render failed.")
+          setRenderMessage("Server render failed.")
+        }
+      } catch (error) {
+        if (cancelled) return
+
+        const message =
+          error instanceof Error ? error.message : "Render job unavailable"
+        setRenderJob(null)
+        setRenderError(message)
+        setRenderMessage("Server render status is unavailable.")
+      }
+    }
+
+    void poll()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [renderJobId])
 
   function syncVideoInput(file: File | null) {
     const input = videoInputRef.current
@@ -101,7 +229,8 @@ export default function Home() {
       setJobState({
         tone: "error",
         title: "Unsupported file",
-        detail: "Drop or choose a video file such as MP4, MOV, WebM, AVI, or MKV.",
+        detail:
+          "Drop or choose a video file such as MP4, MOV, WebM, AVI, or MKV.",
       })
       return
     }
@@ -114,7 +243,6 @@ export default function Home() {
       detail: "Fill in the remaining fields and hit Generate when ready.",
     })
 
-    // Read video dimensions + duration
     try {
       const meta = await getVideoMeta(file)
       setResolution({ width: meta.width, height: meta.height })
@@ -125,7 +253,7 @@ export default function Home() {
 
   function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null
-    attachVideoFile(file)
+    void attachVideoFile(file)
   }
 
   function handleTranscriptFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -134,7 +262,9 @@ export default function Home() {
   }
 
   function handleVideoDragEnter(event: DragEvent<HTMLLabelElement>) {
-    const hasFiles = Array.from(event.dataTransfer.items).some((item) => item.kind === "file")
+    const hasFiles = Array.from(event.dataTransfer.items).some(
+      (item) => item.kind === "file",
+    )
     if (!hasFiles) return
     event.preventDefault()
     dragDepthRef.current += 1
@@ -142,7 +272,9 @@ export default function Home() {
   }
 
   function handleVideoDragOver(event: DragEvent<HTMLLabelElement>) {
-    const hasFiles = Array.from(event.dataTransfer.items).some((item) => item.kind === "file")
+    const hasFiles = Array.from(event.dataTransfer.items).some(
+      (item) => item.kind === "file",
+    )
     if (!hasFiles) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
@@ -150,7 +282,9 @@ export default function Home() {
   }
 
   function handleVideoDragLeave(event: DragEvent<HTMLLabelElement>) {
-    const hasFiles = Array.from(event.dataTransfer.items).some((item) => item.kind === "file")
+    const hasFiles = Array.from(event.dataTransfer.items).some(
+      (item) => item.kind === "file",
+    )
     if (!hasFiles) return
     event.preventDefault()
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
@@ -162,7 +296,7 @@ export default function Home() {
     dragDepthRef.current = 0
     setIsDraggingVideo(false)
     const file = event.dataTransfer.files?.[0] ?? null
-    attachVideoFile(file)
+    void attachVideoFile(file)
   }
 
   async function handleGenerate(event: FormEvent<HTMLFormElement>) {
@@ -177,7 +311,8 @@ export default function Home() {
       setJobState({
         tone: "error",
         title: "Nothing to generate",
-        detail: "Fill in at least one field — taste, transcript, or instructions.",
+        detail:
+          "Fill in at least one field — taste, transcript, or instructions.",
       })
       return
     }
@@ -185,7 +320,8 @@ export default function Home() {
     setJobState({
       tone: "loading",
       title: "Generating graphics…",
-      detail: "Detecting skills, planning layers, and generating code in parallel.",
+      detail:
+        "Detecting skills, planning layers, and generating code in parallel.",
     })
 
     let videoDurationSeconds: number | undefined
@@ -220,12 +356,16 @@ export default function Home() {
 
       const data: FerroGenerateResponse = await res.json()
 
-      // Create a fresh object URL for the compositor
       if (videoFile) {
         if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
         setVideoObjectUrl(URL.createObjectURL(videoFile))
       }
 
+      setRenderJob(null)
+      setRenderJobId(null)
+      setRenderProgress(null)
+      setRenderError(null)
+      setRenderMessage("Choose a render mode, then export.")
       setGenerationResult(data)
       setLayers(data.layers)
       setStep("preview")
@@ -244,11 +384,144 @@ export default function Home() {
     )
   }
 
+  function getRenderPayload(): FerroRenderPayload | null {
+    if (!generationResult) return null
+
+    return {
+      layers,
+      fps: generationResult.fps,
+      width: generationResult.width,
+      height: generationResult.height,
+      durationInFrames: generationResult.durationInFrames,
+    }
+  }
+
+  function downloadFromUrl(url: string, filename: string) {
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+  }
+
+  async function handleServerRender() {
+    const payload = getRenderPayload()
+    if (!payload) return
+
+    setIsStartingServerRender(true)
+    if (clientDownloadUrl) {
+      URL.revokeObjectURL(clientDownloadUrl)
+      setClientDownloadUrl(null)
+    }
+    setRenderError(null)
+    setRenderProgress(null)
+    setRenderMessage("Queueing server render...")
+    setRenderJob(null)
+    setRenderJobId(null)
+
+    try {
+      const formData = new FormData()
+      formData.set("payload", JSON.stringify(payload))
+      if (videoFile) formData.set("video", videoFile)
+
+      const res = await fetch("/api/render", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res
+          .json()
+          .catch(() => ({ error: "Server render failed" }))
+        throw new Error(err.error ?? `HTTP ${res.status}`)
+      }
+
+      const data: FerroRenderJobAcceptedResponse = await res.json()
+      setRenderJobId(data.jobId)
+      setRenderMessage("Server render queued. Waiting for progress...")
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Server render failed"
+      setRenderError(message)
+      setRenderMessage("Server render failed before the job could start.")
+    } finally {
+      setIsStartingServerRender(false)
+    }
+  }
+
+  async function handleClientRender() {
+    const payload = getRenderPayload()
+    if (!payload) return
+
+    setIsClientRendering(true)
+    setRenderError(null)
+    setRenderProgress(null)
+    setRenderMessage("Checking browser render support...")
+    setRenderJob(null)
+    setRenderJobId(null)
+
+    try {
+      const capability = await checkBrowserRenderSupport(
+        payload,
+        Boolean(videoObjectUrl),
+      )
+      if (!capability.canRender) {
+        const issues = capability.issues.map((issue) => issue.message).join(" ")
+        throw new Error(
+          issues || "This browser cannot render the current export.",
+        )
+      }
+
+      setRenderMessage("Browser export in progress...")
+      const blob = await exportInBrowser({
+        payload,
+        videoSrc: videoObjectUrl,
+        onProgress: (progress) => {
+          setRenderProgress(progress)
+        },
+      })
+
+      if (clientDownloadUrl) URL.revokeObjectURL(clientDownloadUrl)
+      const nextDownloadUrl = URL.createObjectURL(blob)
+      setClientDownloadUrl(nextDownloadUrl)
+      setRenderMessage("Browser export finished. Download the MP4.")
+      downloadFromUrl(nextDownloadUrl, "ferro-browser-render.mp4")
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Browser render failed"
+      setRenderError(message)
+      setRenderMessage("Browser render failed.")
+    } finally {
+      setIsClientRendering(false)
+    }
+  }
+
+  async function handleExport() {
+    if (renderMode === "server") {
+      await handleServerRender()
+      return
+    }
+
+    await handleClientRender()
+  }
+
+  const payload = getRenderPayload()
+  const serverIsBusy =
+    isStartingServerRender ||
+    renderJob?.status === "queued" ||
+    renderJob?.status === "rendering"
+  const isExporting = serverIsBusy || isClientRendering
+  const canDownloadServer =
+    renderJob?.status === "complete" && Boolean(renderJob.downloadUrl)
+  const canRetryClient = renderMode === "server" && Boolean(renderError)
+  const canDownloadClient =
+    renderMode === "client" && Boolean(clientDownloadUrl)
+  const serverDownloadUrl =
+    renderJob?.status === "complete" ? renderJob.downloadUrl : null
+
   if (step === "preview" && generationResult) {
     return (
       <main className="min-h-screen px-4 py-8 text-white sm:px-6 sm:py-10">
         <div className="mx-auto w-full max-w-6xl">
-          {/* Back button */}
           <div className="mb-8 flex items-center gap-4">
             <Button
               type="button"
@@ -272,7 +545,161 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Compositor preview */}
+          <div className="mb-8 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-2xl">
+                <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
+                  Export
+                </p>
+                <h2 className="mt-2 text-2xl font-medium tracking-[-0.04em] text-white">
+                  Render MP4 output
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-white/62">
+                  Server rendering is primary for development. Browser rendering
+                  stays available as a fallback when the server path is
+                  unavailable or unsupported.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={renderMode === "server" ? "secondary" : "ghost"}
+                  onClick={() => setRenderMode("server")}
+                  className={cn(
+                    "rounded-xl border border-white/10 px-4 text-white",
+                    renderMode === "server"
+                      ? "bg-white/15 hover:bg-white/20"
+                      : "bg-black/30 hover:bg-white/[0.08]",
+                  )}
+                >
+                  Server
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={renderMode === "client" ? "secondary" : "ghost"}
+                  onClick={() => setRenderMode("client")}
+                  className={cn(
+                    "rounded-xl border border-white/10 px-4 text-white",
+                    renderMode === "client"
+                      ? "bg-white/15 hover:bg-white/20"
+                      : "bg-black/30 hover:bg-white/[0.08]",
+                  )}
+                >
+                  Client
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4">
+                <p className="text-sm font-medium text-white">
+                  {renderMode === "server"
+                    ? "Server render mode"
+                    : "Client render mode"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-white/62">
+                  {renderMessage}
+                </p>
+                {payload ? (
+                  <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.24em] text-white/38">
+                    {payload.width}×{payload.height} · {payload.fps}fps ·{" "}
+                    {payload.durationInFrames} frames
+                  </p>
+                ) : null}
+                {typeof renderProgress === "number" ? (
+                  <div className="mt-4">
+                    <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className="h-full bg-white transition-[width]"
+                        style={{ width: `${Math.round(renderProgress * 100)}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-white/45">
+                      {Math.round(renderProgress * 100)}% complete
+                    </p>
+                  </div>
+                ) : null}
+                {renderError ? (
+                  <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-3 text-sm text-red-300">
+                    {renderError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  size="lg"
+                  onClick={() => void handleExport()}
+                  disabled={isExporting}
+                  className="h-12 rounded-[1rem] bg-white px-5 text-black hover:bg-zinc-200"
+                >
+                  <Sparkles className="size-4" />
+                  {renderMode === "server"
+                    ? serverIsBusy
+                      ? "Rendering on server…"
+                      : "Start server render"
+                    : isClientRendering
+                      ? "Rendering in browser…"
+                      : "Render in browser"}
+                </Button>
+
+                {canDownloadServer && renderJob?.downloadUrl ? (
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant="outline"
+                    onClick={() =>
+                      serverDownloadUrl
+                        ? downloadFromUrl(
+                            serverDownloadUrl,
+                            `ferro-server-render-${renderJob.jobId}.mp4`,
+                          )
+                        : undefined
+                    }
+                    className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                  >
+                    <Download className="size-4" />
+                    Download MP4
+                  </Button>
+                ) : null}
+
+                {canDownloadClient && clientDownloadUrl ? (
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant="outline"
+                    onClick={() =>
+                      downloadFromUrl(
+                        clientDownloadUrl,
+                        "ferro-browser-render.mp4",
+                      )
+                    }
+                    className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                  >
+                    <Download className="size-4" />
+                    Download MP4
+                  </Button>
+                ) : null}
+
+                {canRetryClient ? (
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setRenderMode("client")}
+                    className="h-12 rounded-[1rem] border-white/10 bg-black/35 px-5 text-white hover:bg-white/[0.08]"
+                  >
+                    Retry with client rendering
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
           <div className="mb-8">
             <CompositorPreview
               videoObjectUrl={videoObjectUrl}
@@ -284,11 +711,10 @@ export default function Home() {
             />
           </div>
 
-          {/* Per-layer cards */}
           <div className="grid gap-6 md:grid-cols-2">
             {layers.map((layer, i) => (
               <GraphicCard
-                key={i}
+                key={getLayerCardKey(layer, i)}
                 layer={layer}
                 fps={generationResult.fps}
                 width={generationResult.width}
@@ -314,7 +740,8 @@ export default function Home() {
               Upload a video and shape the Remotion brief.
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">
-              Source video on top. Taste, transcript, and prompt underneath. Generate AI-powered motion graphics overlays.
+              Source video on top. Taste, transcript, and prompt underneath.
+              Generate AI-powered motion graphics overlays.
             </p>
           </div>
 
@@ -323,7 +750,7 @@ export default function Home() {
               htmlFor="source-video"
               className={cn(
                 "group relative block cursor-pointer overflow-hidden rounded-[2rem] border border-white/12 bg-white/[0.035] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-colors hover:border-white/20 hover:bg-white/[0.05] sm:p-10",
-                isDraggingVideo && "border-white/35 bg-white/[0.08]"
+                isDraggingVideo && "border-white/35 bg-white/[0.08]",
               )}
               onDragEnter={handleVideoDragEnter}
               onDragLeave={handleVideoDragLeave}
@@ -346,7 +773,7 @@ export default function Home() {
                 <div
                   className={cn(
                     "flex size-16 items-center justify-center rounded-2xl border border-white/12 bg-white/[0.05] transition-colors",
-                    isDraggingVideo && "border-white/30 bg-white/[0.12]"
+                    isDraggingVideo && "border-white/30 bg-white/[0.12]",
                   )}
                 >
                   <FileVideo className="size-6 text-white" />
@@ -359,12 +786,13 @@ export default function Home() {
                       : "Upload source video"}
                 </h2>
                 <p className="mt-3 max-w-xl text-sm leading-7 text-white/62 sm:text-base">
-                  Drag a video in from Finder or click to browse, then fill out the brief below.
+                  Drag a video in from Finder or click to browse, then fill out
+                  the brief below.
                 </p>
                 <div
                   className={cn(
                     "mt-6 min-w-[260px] rounded-2xl border border-dashed border-white/15 bg-black/45 px-5 py-4 transition-colors",
-                    isDraggingVideo && "border-white/35 bg-white/[0.08]"
+                    isDraggingVideo && "border-white/35 bg-white/[0.08]",
                   )}
                 >
                   <p className="text-sm font-medium text-white">
@@ -381,12 +809,11 @@ export default function Home() {
               </div>
             </label>
 
-            {/* Resolution selector — only shown when no video is attached */}
-            {!videoFile && (
+            {!videoFile ? (
               <div className="rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
                 <ResolutionSelector value={resolution} onChange={setResolution} />
               </div>
-            )}
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-3">
               <FieldCard
@@ -415,7 +842,7 @@ export default function Home() {
                       htmlFor="transcript-file"
                       className={cn(
                         buttonVariants({ variant: "outline", size: "sm" }),
-                        "cursor-pointer rounded-full border-white/10 bg-white/[0.05] text-white shadow-none hover:bg-white/[0.08]"
+                        "cursor-pointer rounded-full border-white/10 bg-white/[0.05] text-white shadow-none hover:bg-white/[0.08]",
                       )}
                     >
                       <Upload className="size-3.5" />
@@ -435,7 +862,9 @@ export default function Home() {
                 {transcriptFileName ? (
                   <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-xs text-white/60">
                     Transcript file ready:{" "}
-                    <span className="font-medium text-white">{transcriptFileName}</span>
+                    <span className="font-medium text-white">
+                      {transcriptFileName}
+                    </span>
                   </p>
                 ) : null}
               </FieldCard>

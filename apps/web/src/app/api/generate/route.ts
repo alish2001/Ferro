@@ -4,34 +4,12 @@ import { planGraphics } from "@/generation/planner"
 import { buildSystemPrompt } from "@/generation/prompts"
 import { detectSkills } from "@/generation/skills"
 import { FAST_MODEL_ID, getModel } from "@/lib/models"
+import type {
+  FerroGenerateRequest,
+  FerroGenerateResponse,
+  FerroLayer,
+} from "@/lib/ferro-contracts"
 import { getCombinedSkillContent } from "@/skills"
-
-export interface FerroGenerateRequest {
-  taste: string
-  transcript: string
-  instructions: string
-  model: string
-  width: number
-  height: number
-  videoDurationSeconds?: number
-}
-
-export interface FerroLayer {
-  code: string
-  type: string
-  title: string
-  from: number
-  durationInFrames: number
-}
-
-export interface FerroGenerateResponse {
-  layers: FerroLayer[]
-  fps: number
-  width: number
-  height: number
-  durationInFrames: number
-  skills: string[]
-}
 
 export async function POST(req: Request): Promise<Response> {
   let body: FerroGenerateRequest
@@ -42,7 +20,15 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid request body" }, { status: 400 })
   }
 
-  const { taste = "", transcript = "", instructions = "", model, width, height, videoDurationSeconds } = body
+  const {
+    taste = "",
+    transcript = "",
+    instructions = "",
+    model,
+    width,
+    height,
+    videoDurationSeconds,
+  } = body
 
   if (!model) {
     return Response.json({ error: "model is required" }, { status: 400 })
