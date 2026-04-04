@@ -16,6 +16,7 @@ bun run dev:web
 bun run dev:render
 bun run build:render-bundle
 bun run lint
+bun run test
 bun run typecheck
 ```
 

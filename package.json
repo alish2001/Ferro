@@ -13,6 +13,8 @@
     "lint": "bun run lint:web && bun run lint:render",
     "lint:web": "bun run --cwd apps/web lint",
     "lint:render": "bun run --cwd packages/render-core lint",
+    "test": "bun run test:web",
+    "test:web": "bun run --cwd apps/web test",
     "typecheck": "bun run typecheck:web && bun run typecheck:render",
     "typecheck:web": "bun run --cwd apps/web typecheck",
     "typecheck:render": "bun run --cwd packages/render-core typecheck"
