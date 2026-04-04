@@ -16,6 +16,7 @@ import {
 
 import { CompositorPreview } from "@/components/preview/CompositorPreview"
 import { GraphicCard } from "@/components/preview/GraphicCard"
+import { AnimatedProgress } from "@/components/ui/animated-progress"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ModelSelector } from "@/components/ui/model-selector"
 import {
@@ -25,6 +26,7 @@ import {
 import { FieldCard } from "@/components/upload/field-card"
 import {
   GenerationStatus,
+  type GenerationCounts,
   type JobState,
 } from "@/components/upload/generation-status"
 import { getVideoMeta } from "@/helpers/video-meta"
@@ -156,6 +158,38 @@ function getLayerCounts(layers: FerroLayer[]) {
   }
 }
 
+function getGenerationProgress(
+  session: FerroGenerationSession | null,
+  counts: GenerationCounts,
+) {
+  if (!session) return null
+  if (session.status === "complete") return 1
+
+  if (session.layers.length === 0) {
+    return session.skills.length > 0 ? 0.2 : 0.08
+  }
+
+  const weightedLayerProgress =
+    (counts.ready + counts.generating * 0.52 + counts.failed * 0.2) /
+    session.layers.length
+
+  return Math.min(0.96, 0.24 + weightedLayerProgress * 0.72)
+}
+
+function getLayerProgressState(layer: FerroLayer) {
+  switch (layer.status) {
+    case "queued":
+      return { indeterminate: false, tone: "idle" as const, value: 0.08 }
+    case "generating":
+      return { indeterminate: true, tone: "loading" as const, value: 0.52 }
+    case "failed":
+      return { indeterminate: false, tone: "error" as const, value: 1 }
+    case "ready":
+    default:
+      return { indeterminate: false, tone: "success" as const, value: 1 }
+  }
+}
+
 export default function Home() {
   const [step, setStep] = useState<"form" | "preview">("form")
   const [videoFile, setVideoFile] = useState<File | null>(null)
@@ -198,6 +232,11 @@ export default function Home() {
   const sessionRef = useRef<FerroGenerationSession | null>(null)
 
   const layers = currentSession?.layers ?? []
+  const currentLayerCounts = getLayerCounts(layers)
+  const generationProgress = getGenerationProgress(
+    currentSession,
+    currentLayerCounts,
+  )
   const payload = getRenderPayload(currentSession)
   const displayedJobState = currentSession
     ? buildSessionJobState(currentSession)
@@ -983,7 +1022,6 @@ export default function Home() {
     await handleClientRender()
   }
 
-  const currentLayerCounts = getLayerCounts(layers)
   const serverIsBusy =
     isStartingServerRender ||
     renderJob?.status === "queued" ||
@@ -1417,7 +1455,12 @@ export default function Home() {
             </div>
 
             <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
-              <GenerationStatus jobState={displayedJobState} />
+              <GenerationStatus
+                jobState={displayedJobState}
+                progress={generationProgress}
+                totalLayers={layers.length}
+                layerCounts={currentSession ? currentLayerCounts : null}
+              />
 
               {currentSession ? (
                 <div className="rounded-[1.35rem] border border-white/10 bg-black/35 px-4 py-4">
@@ -1456,38 +1499,46 @@ export default function Home() {
                       {currentSession.layers.map((layer) => (
                         <div
                           key={layer.id}
-                          className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2"
+                          className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3"
                         >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-white/85">
-                              {layer.title}
-                            </p>
-                            <p className="mt-0.5 text-xs text-white/45">
-                              {Math.round((layer.from / (currentSession.fps ?? 30)) * 10) / 10}
-                              s -{" "}
-                              {Math.round(
-                                ((layer.from + layer.durationInFrames) /
-                                  (currentSession.fps ?? 30)) *
-                                  10,
-                              ) / 10}
-                              s
-                            </p>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-white/85">
+                                {layer.title}
+                              </p>
+                              <p className="mt-0.5 text-xs text-white/45">
+                                {Math.round(
+                                  (layer.from / (currentSession.fps ?? 30)) * 10,
+                                ) / 10}
+                                s -{" "}
+                                {Math.round(
+                                  ((layer.from + layer.durationInFrames) /
+                                    (currentSession.fps ?? 30)) *
+                                    10,
+                                ) / 10}
+                                s
+                              </p>
+                              <AnimatedProgress
+                                {...getLayerProgressState(layer)}
+                                className="mt-3 h-1.5"
+                              />
+                            </div>
+                            <span
+                              className={cn(
+                                "rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em]",
+                                layer.status === "ready" &&
+                                  "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+                                layer.status === "generating" &&
+                                  "border-blue-400/30 bg-blue-500/10 text-blue-200",
+                                layer.status === "queued" &&
+                                  "border-white/10 bg-white/[0.06] text-white/55",
+                                layer.status === "failed" &&
+                                  "border-red-400/30 bg-red-500/10 text-red-200",
+                              )}
+                            >
+                              {layer.status}
+                            </span>
                           </div>
-                          <span
-                            className={cn(
-                              "rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em]",
-                              layer.status === "ready" &&
-                                "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
-                              layer.status === "generating" &&
-                                "border-blue-400/30 bg-blue-500/10 text-blue-200",
-                              layer.status === "queued" &&
-                                "border-white/10 bg-white/[0.06] text-white/55",
-                              layer.status === "failed" &&
-                                "border-red-400/30 bg-red-500/10 text-red-200",
-                            )}
-                          >
-                            {layer.status}
-                          </span>
                         </div>
                       ))}
                     </div>

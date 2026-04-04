@@ -1,11 +1,14 @@
 "use client"
 
+import { motion } from "framer-motion"
 import { useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 
+import { AnimatedProgress } from "@/components/ui/animated-progress"
 import type { FerroLayer, FerroLayerMessage } from "@/lib/ferro-contracts"
 import { compileCode } from "@/remotion/compiler"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +34,40 @@ const TYPE_LABELS: Record<string, string> = {
   "stat-callout": "Stat Callout",
   "quote-overlay": "Quote Overlay",
   "outro-card": "Outro Card",
+}
+
+const THINKING_WORDS = ["Assistant", "is", "revising", "this", "layer"]
+
+function PendingAssistantText() {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-white/72">
+      {THINKING_WORDS.map((word, index) => (
+        <motion.span
+          key={word}
+          animate={{ opacity: [0.28, 1, 0.28] }}
+          transition={{
+            duration: 1.45,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "easeInOut",
+            delay: index * 0.12,
+          }}
+        >
+          {word}
+        </motion.span>
+      ))}
+      <motion.span
+        className="inline-flex"
+        animate={{ opacity: [0.2, 1, 0.2] }}
+        transition={{
+          duration: 1.1,
+          repeat: Number.POSITIVE_INFINITY,
+          ease: "easeInOut",
+        }}
+      >
+        …
+      </motion.span>
+    </div>
+  )
 }
 
 export function GraphicCard({
@@ -164,9 +201,21 @@ export function GraphicCard({
             Layer chat
           </p>
           {isEditPending ? (
-            <span className="text-xs text-white/45">Updating…</span>
+            <span className="inline-flex items-center gap-2 text-xs text-white/45">
+              <Spinner className="size-3.5 text-sky-100/80" />
+              Updating…
+            </span>
           ) : null}
         </div>
+
+        {isEditPending ? (
+          <AnimatedProgress
+            indeterminate
+            tone="loading"
+            value={0.56}
+            className="mt-3 h-1.5"
+          />
+        ) : null}
 
         <div className="mt-3 space-y-2">
           {messages.length > 0 ? (
@@ -185,7 +234,13 @@ export function GraphicCard({
                 <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/40">
                   {message.role}
                 </p>
-                <p className="mt-1 whitespace-pre-wrap">{message.text}</p>
+                <div className="mt-1 whitespace-pre-wrap">
+                  {message.role === "assistant" && message.status === "pending" ? (
+                    <PendingAssistantText />
+                  ) : (
+                    <p>{message.text}</p>
+                  )}
+                </div>
               </div>
             ))
           ) : (
@@ -217,7 +272,14 @@ export function GraphicCard({
               disabled={!prompt.trim() || !isReady || isEditPending}
               className="rounded-xl bg-white px-4 text-black hover:bg-zinc-200"
             >
-              {isEditPending ? "Updating…" : "Send edit prompt"}
+              {isEditPending ? (
+                <>
+                  <Spinner className="text-black" />
+                  Updating…
+                </>
+              ) : (
+                "Send edit prompt"
+              )}
             </Button>
           </div>
         </div>
