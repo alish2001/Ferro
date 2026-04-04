@@ -7,9 +7,10 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "bun run build:render-bundle && bun run dev:web",
     "dev:web": "bun run --cwd apps/web dev",
     "dev:render": "bun run --cwd packages/render-core dev",
-    "build:render-bundle": "bun run --cwd packages/render-core build",
+    "build:render-bundle": "printf 'n\\n' | bun run --cwd packages/render-core build",
     "lint": "bun run lint:web && bun run lint:render",
     "lint:web": "bun run --cwd apps/web lint",
     "lint:render": "bun run --cwd packages/render-core lint",

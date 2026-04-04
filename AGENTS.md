@@ -18,8 +18,11 @@ Use Bun for repo operations.
 Canonical root commands:
 
 ```bash
+bun run dev
 bun run dev:web
 bun run dev:render
+bun run build:render-bundle
+bun run test
 bun run lint
 bun run typecheck
 ```
@@ -67,6 +70,19 @@ Thin orchestrator. Sequence: `detectSkills` → `planGraphics` → `getCombinedS
 Request shape: `{ taste, transcript, instructions, model, width, height, videoDurationSeconds? }`
 Response shape: `{ layers, fps, width, height, durationInFrames, skills }`
 
+#### Render Export (`src/app/api/render/` and `src/render/`)
+
+Server-side MP4 export now lives in the web app.
+
+- `POST /api/render` accepts `multipart/form-data` with `payload` JSON and an optional `video` file
+- `GET /api/render/[jobId]` returns local render job status and progress
+- `GET /api/render/[jobId]/download` streams the finished MP4
+- `GET /api/render/[jobId]/source` serves the uploaded source video back to the Remotion renderer
+- `src/render/` contains the local dev render service split into `request.ts`, `orchestrator.ts`, `job-store.ts`, `artifact-store.ts`, `paths.ts`, and `render-runner.ts`
+- `src/lib/ferro-contracts.ts` is the shared contract surface for generation and rendering payloads; keep it web-local and do not invent a new shared package
+- The queue and artifact store are intentionally dev-local adapters with comments marking where they should later be replaced by a durable queue and persistent object storage
+- There is no separate render host to boot in development; the Next.js app handles `/api/render` directly
+
 #### Browser Compiler (`src/remotion/compiler.ts`)
 
 Ported from `template-prompt-to-motion-graphics-saas`. Strips imports from LLM-generated code, wraps in a function, transpiles with `@babel/standalone`, and evals via `new Function(...)` with all Remotion APIs injected. Keep all injected APIs (Lottie, ThreeCanvas, Three.js, shapes, transitions). The `Video` component from `remotion` is injected for use in browser preview.
@@ -92,6 +108,7 @@ Two-step UI: `step === "form"` shows the upload form; `step === "preview"` shows
 - Video upload reads real dimensions via `getVideoMeta()` and updates the resolution state
 - `<ResolutionSelector>` is hidden once a video is attached (video dimensions take precedence)
 - `handleGenerate` POSTs to `/api/generate` and transitions to the preview step on success
+- The preview step now also owns export state and exposes a render-mode toggle: server-first MP4 export through `/api/render`, with browser export as a manual fallback
 
 #### Helpers (`src/helpers/`)
 
@@ -112,6 +129,18 @@ This is the Remotion render package.
 
 The `defaultProps` on the `<Composition>` in `Root.tsx` are **Studio preview defaults only**. At actual render time, pass real values via `inputProps` to `renderMedia()`.
 
+#### Render Bundle Requirement
+
+The web app's server renderer consumes the prebuilt bundle output at `packages/render-core/build`.
+
+- There is no separate render host or background service to start in development
+- The backend renderer is the Next.js Node runtime handling `/api/render`
+- For server export to work, the `render-core` bundle must exist and be current
+- `packages/render-core/build` should stay ignored; it is a generated artifact consumed by the server renderer
+- `bun run dev` now does the minimum setup: build the bundle once, then start the web app
+- If you change `packages/render-core` while `bun run dev:web` is already running, rerun `bun run build:render-bundle` before exporting again
+- `bun run dev:render` is still only for Remotion Studio and composition debugging, not for hosting the server renderer
+
 #### `src/compiler.ts` (render-core variant)
 
 Same logic as the web compiler, but injects `OffthreadVideo` instead of `Video`. This is required for correct frame-accurate rendering on the server. Do not swap them — `Video` will not render correctly at non-realtime speeds.
@@ -125,8 +154,8 @@ Same logic as the web compiler, but injects `OffthreadVideo` instead of `Video`.
 ## Important Intentionality
 
 - There is no shared package — do not invent a premature `packages/shared`
-- There is no web-triggered render pipeline yet (`/api/render` is Phase 2)
-- There is no job orchestration or streaming layer yet
+- There is now a web-triggered render pipeline in `apps/web`, but it is intentionally local and dev-oriented
+- There is still no durable job orchestration, auth, persistence, or progress streaming transport yet
 
 ## Symlink Guardrail
 
