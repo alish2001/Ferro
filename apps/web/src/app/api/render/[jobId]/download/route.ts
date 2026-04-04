@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs"
 import { stat } from "node:fs/promises"
 import { Readable } from "node:stream"
 import { getStoredRenderJob } from "@/render/orchestrator"
+import { fileExists } from "@/render/artifact-store"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -21,6 +22,14 @@ export async function GET(
     return Response.json(
       { error: "Render is not ready to download" },
       { status: 409 },
+    )
+  }
+
+  const hasOutput = await fileExists(job.outputPath)
+  if (!hasOutput) {
+    return Response.json(
+      { error: "Rendered MP4 file is unavailable. Re-run the export." },
+      { status: 410 },
     )
   }
 

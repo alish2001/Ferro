@@ -195,8 +195,12 @@ export default function Home() {
         }
 
         if (data.status === "complete") {
-          setRenderError(null)
-          setRenderMessage("Server render finished. Download the MP4 when ready.")
+          setRenderError(data.error)
+          setRenderMessage(
+            data.downloadUrl
+              ? "Server render finished. Download the MP4 when ready."
+              : (data.error ?? "Server render finished, but the MP4 is unavailable."),
+          )
           return
         }
 

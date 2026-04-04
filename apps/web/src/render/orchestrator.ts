@@ -3,7 +3,7 @@ import type {
   FerroRenderJobResponse,
   FerroRenderPayload,
 } from "@/lib/ferro-contracts"
-import { getRenderOutputPath, removeFile, saveUploadedVideo } from "@/render/artifact-store"
+import { fileExists, getRenderOutputPath, saveUploadedVideo } from "@/render/artifact-store"
 import {
   createRenderJob,
   finishActiveRenderJob,
@@ -35,10 +35,10 @@ async function pumpQueue() {
           updateRenderJobProgress(job.id, progress)
         })
         markRenderJobComplete(job.id)
-        await removeFile(job.inputVideoPath)
+        // Keep the uploaded source video for now so the same local job artifacts
+        // can support iterative tweaks and re-renders during development.
       } catch (error) {
         markRenderJobError(job.id, getErrorMessage(error))
-        await removeFile(job.inputVideoPath)
       } finally {
         finishActiveRenderJob()
       }
@@ -82,10 +82,28 @@ export async function enqueueRenderJob({
   }
 }
 
-export function getRenderJobResponse(jobId: string): FerroRenderJobResponse | null {
+export async function getRenderJobResponse(
+  jobId: string,
+): Promise<FerroRenderJobResponse | null> {
   const job = getRenderJob(jobId)
   if (!job) return null
-  return serializeRenderJob(job)
+
+  const response = serializeRenderJob(job)
+
+  if (job.status !== "complete") {
+    return response
+  }
+
+  const hasOutput = await fileExists(job.outputPath)
+  if (hasOutput) {
+    return response
+  }
+
+  return {
+    ...response,
+    downloadUrl: null,
+    error: "Rendered MP4 file is unavailable. Re-run the export.",
+  }
 }
 
 export function getStoredRenderJob(jobId: string) {

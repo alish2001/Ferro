@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs"
 import { stat } from "node:fs/promises"
 import { Readable } from "node:stream"
 import { getStoredRenderJob } from "@/render/orchestrator"
+import { fileExists } from "@/render/artifact-store"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -15,6 +16,14 @@ export async function GET(
 
   if (!job || !job.inputVideoPath) {
     return Response.json({ error: "Source video not found" }, { status: 404 })
+  }
+
+  const hasSource = await fileExists(job.inputVideoPath)
+  if (!hasSource) {
+    return Response.json(
+      { error: "Source video file is unavailable" },
+      { status: 410 },
+    )
   }
 
   const fileStats = await stat(job.inputVideoPath)

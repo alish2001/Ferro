@@ -8,7 +8,7 @@ export async function GET(
   context: { params: Promise<{ jobId: string }> },
 ) {
   const { jobId } = await context.params
-  const job = getRenderJobResponse(jobId)
+  const job = await getRenderJobResponse(jobId)
 
   if (!job) {
     return Response.json({ error: "Render job not found" }, { status: 404 })
