@@ -12,9 +12,8 @@ import {
   Upload,
   WandSparkles,
 } from "lucide-react"
+import dynamic from "next/dynamic"
 
-import { CompositorPreview } from "@/components/preview/CompositorPreview"
-import { GraphicCard } from "@/components/preview/GraphicCard"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ModelSelector } from "@/components/ui/model-selector"
 import {
@@ -36,10 +35,6 @@ import type {
   FerroRenderPayload,
 } from "@/lib/ferro-contracts"
 import { cn } from "@/lib/utils"
-import {
-  checkBrowserRenderSupport,
-  exportInBrowser,
-} from "@/remotion/client-render"
 
 const initialJobState: JobState = {
   tone: "idle",
@@ -55,6 +50,26 @@ const supportedVideoExtensions = [
   ".avi",
   ".mkv",
 ]
+
+const CompositorPreview = dynamic(
+  () =>
+    import("@/components/preview/CompositorPreview").then(
+      (module) => module.CompositorPreview,
+    ),
+  {
+    ssr: false,
+  },
+)
+
+const GraphicCard = dynamic(
+  () =>
+    import("@/components/preview/GraphicCard").then(
+      (module) => module.GraphicCard,
+    ),
+  {
+    ssr: false,
+  },
+)
 
 function isLikelyVideoFile(file: File) {
   if (file.type.startsWith("video/")) return true
@@ -106,6 +121,7 @@ export default function Home() {
   const [isClientRendering, setIsClientRendering] = useState(false)
 
   const videoInputRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const dragDepthRef = useRef(0)
 
   useEffect(() => {
@@ -460,6 +476,10 @@ export default function Home() {
     setRenderJobId(null)
 
     try {
+      const { checkBrowserRenderSupport, exportInBrowser } = await import(
+        "@/remotion/client-render"
+      )
+
       const capability = await checkBrowserRenderSupport(
         payload,
         Boolean(videoObjectUrl),
@@ -745,7 +765,7 @@ export default function Home() {
             </p>
           </div>
 
-          <form className="space-y-6" onSubmit={handleGenerate}>
+          <form ref={formRef} className="space-y-6" onSubmit={handleGenerate}>
             <label
               htmlFor="source-video"
               className={cn(
@@ -891,8 +911,9 @@ export default function Home() {
               />
 
               <Button
-                type="submit"
+                type="button"
                 size="lg"
+                onClick={() => formRef.current?.requestSubmit()}
                 className="h-14 min-w-[240px] rounded-[1.15rem] bg-white px-6 text-black hover:bg-zinc-200"
               >
                 <Sparkles className="size-4" />
