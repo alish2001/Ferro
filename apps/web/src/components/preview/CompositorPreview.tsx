@@ -1,7 +1,7 @@
 "use client"
 
 import { compileCode } from "@/remotion/compiler"
-import type { FerroLayer } from "@/app/api/generate/route"
+import type { FerroLayer } from "@/lib/ferro-contracts"
 import dynamic from "next/dynamic"
 import React, { useMemo } from "react"
 import { AbsoluteFill, Sequence, Video } from "remotion"
@@ -28,30 +28,27 @@ export function CompositorPreview({
   height,
   durationInFrames,
 }: CompositorPreviewProps) {
-  // Compile all layers and build the composite component
   const CompositeComponent = useMemo(() => {
     const compiled = layers.map((layer) => ({
       Component: compileCode(layer.code).Component,
       from: layer.from,
       durationInFrames: layer.durationInFrames,
-      type: layer.type,
     }))
 
-    // Capture videoObjectUrl in closure for the component
     const videoSrc = videoObjectUrl
 
     return function FerroComposite() {
       return (
         <AbsoluteFill>
-          {videoSrc && (
+          {videoSrc ? (
             <Video
               src={videoSrc}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
-          )}
-          {compiled.map(({ Component, from, durationInFrames: dur }, i) =>
+          ) : null}
+          {compiled.map(({ Component, from, durationInFrames }, index) =>
             Component ? (
-              <Sequence key={i} from={from} durationInFrames={dur}>
+              <Sequence key={index} from={from} durationInFrames={durationInFrames}>
                 <Component />
               </Sequence>
             ) : null,
@@ -59,7 +56,6 @@ export function CompositorPreview({
         </AbsoluteFill>
       )
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, videoObjectUrl])
 
   return (

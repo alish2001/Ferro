@@ -12,11 +12,16 @@ Remotion render package.
 
 ```bash
 bun install
+bun run dev
 bun run dev:web
 bun run dev:render
+bun run build:render-bundle
 bun run lint
+bun run test
 bun run typecheck
 ```
+
+`bun run dev` is the easiest development entrypoint for export work. It builds the `render-core` bundle once and then starts the web app. `packages/render-core/build` is a generated artifact and stays ignored. There is no separate render backend to host; `/api/render` runs inside the Next.js app and consumes that bundle. If you change `packages/render-core` while developing, rerun `bun run build:render-bundle` before testing server export again.
 
 ## Notes
 

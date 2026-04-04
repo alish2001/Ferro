@@ -8,6 +8,8 @@ for Ferro.
 ```bash
 bun install
 bun run dev:render
+bun run build:render-bundle
+bun run test
 ```
 
 ## From this package
