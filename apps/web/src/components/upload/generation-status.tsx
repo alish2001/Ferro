@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils"
 
-export type JobTone = "idle" | "success" | "error"
+export type JobTone = "idle" | "success" | "error" | "loading"
 
 export type JobState = {
   detail: string
@@ -12,6 +12,7 @@ const toneClasses: Record<JobTone, string> = {
   idle: "border-white/10 bg-white/[0.04]",
   success: "border-emerald-400/30 bg-emerald-500/10",
   error: "border-red-400/30 bg-red-500/10",
+  loading: "border-blue-400/30 bg-blue-500/10",
 }
 
 type GenerationStatusProps = {

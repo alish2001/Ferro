@@ -6,16 +6,24 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@babel/standalone": "^7.29.2",
     "@remotion/cli": "4.0.443",
+    "@remotion/lottie": "^4.0.443",
+    "@remotion/shapes": "^4.0.443",
+    "@remotion/tailwind-v4": "4.0.443",
+    "@remotion/three": "^4.0.443",
+    "@remotion/transitions": "^4.0.443",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "remotion": "4.0.443",
-    "@remotion/tailwind-v4": "4.0.443",
-    "tailwindcss": "4.2.2"
+    "tailwindcss": "4.2.2",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
+    "@types/babel__standalone": "^7.1.9",
     "@types/react": "19.2.14",
+    "@types/three": "^0.183.1",
     "eslint": "9.39.4",
     "globals": "17.4.0",
     "prettier": "3.8.1",

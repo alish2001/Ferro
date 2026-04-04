@@ -34,6 +34,70 @@ This is the Next.js App Router surface for the product flow.
 - Keep the current flow as a single page in `apps/web`
 - If you edit this app, read `apps/web/AGENTS.md` first because the Next.js version is newer than many default assumptions
 
+#### Generation Pipeline (`src/generation/`)
+
+Pure async functions — no React, no Next.js imports. Each module does one thing and can be swapped independently.
+
+| File | Purpose |
+|---|---|
+| `generation/prompts.ts` | `OVERLAY_SYSTEM_PROMPT` and `buildSystemPrompt(skillContent)` |
+| `generation/skills.ts` | `detectSkills(prompt, model)` → `SkillName[]` |
+| `generation/planner.ts` | `planGraphics(brief, model)` → layer plan with timing |
+| `generation/generator.ts` | `generateLayer(brief, systemPrompt, model)` → code string |
+
+All generation calls use the Vercel AI SDK v6 pattern: `generateText` with `output: Output.object({ schema })`. **Do not use `generateObject`** — it is deprecated in AI SDK v6. Import `Output` (capital O) from `"ai"`.
+
+#### Model Registry (`src/lib/models.ts`)
+
+`getModel(id)` splits on the first `:` — e.g. `"anthropic:claude-sonnet-4-6"` or `"openai:gpt-4o"`. Add new providers/models here only.
+
+`FAST_MODEL_ID` is used for cheap skill detection and planning calls. The user-selected model is used for layer code generation.
+
+#### Skills System (`src/skills/`)
+
+- `index.ts` loads `.md` files at runtime via `fs.readFileSync` from `process.cwd()/src/skills/` — server-side only, called from the API route
+- Active skills: `typography`, `spring-physics`, `charts`, `transitions`, `sequencing`, `video-overlay`
+- `video-overlay.md` is Ferro-specific: overlay rules (no `backgroundColor` on `AbsoluteFill`, position constants, min font sizes, frame coverage limits)
+- To add a skill: create a `.md` file in `src/skills/` and add its name to `SKILL_NAMES` in `index.ts`
+
+#### API Route (`src/app/api/generate/route.ts`)
+
+Thin orchestrator. Sequence: `detectSkills` → `planGraphics` → `getCombinedSkillContent` → `buildSystemPrompt` → `Promise.all(generateLayer×N)` → sanitize → respond.
+
+Request shape: `{ taste, transcript, instructions, model, width, height, videoDurationSeconds? }`
+Response shape: `{ layers, fps, width, height, durationInFrames, skills }`
+
+#### Browser Compiler (`src/remotion/compiler.ts`)
+
+Ported from `template-prompt-to-motion-graphics-saas`. Strips imports from LLM-generated code, wraps in a function, transpiles with `@babel/standalone`, and evals via `new Function(...)` with all Remotion APIs injected. Keep all injected APIs (Lottie, ThreeCanvas, Three.js, shapes, transitions). The `Video` component from `remotion` is injected for use in browser preview.
+
+Do not remove injected APIs to "clean up" — the LLM generates code that depends on them.
+
+#### Preview Components (`src/components/preview/`)
+
+- `GraphicCard.tsx` — per-layer preview: `<Player>` (dynamic import, `ssr: false`), editable code textarea, "Apply changes" rerun button
+- `CompositorPreview.tsx` — all layers stacked via `<Sequence>` over `<Video>` in a single `<Player>`
+
+Both compile code via `compileCode()` on mount and on user edits. The `<Player>` is always dynamically imported with `ssr: false`.
+
+#### UI Components (`src/components/ui/`)
+
+- `model-selector.tsx` — dark-styled `<select>` driven by the `MODELS` array from `lib/models.ts`
+- `resolution-selector.tsx` — preset pills (1920×1080, 1280×720, 1080×1920, 1080×1080) + free width/height inputs + aspect ratio input. Shown on the form only when no video is attached.
+
+#### Page Flow (`src/app/page.tsx`)
+
+Two-step UI: `step === "form"` shows the upload form; `step === "preview"` shows the compositor and per-layer cards.
+
+- Video upload reads real dimensions via `getVideoMeta()` and updates the resolution state
+- `<ResolutionSelector>` is hidden once a video is attached (video dimensions take precedence)
+- `handleGenerate` POSTs to `/api/generate` and transitions to the preview step on success
+
+#### Helpers (`src/helpers/`)
+
+- `sanitize-response.ts` — `stripMarkdownFences`, `extractComponentCode` (brace counting). Used to sanitize LLM output even when using structured outputs.
+- `video-meta.ts` — browser-only `getVideoMeta(file)`: reads `videoWidth`, `videoHeight`, and `duration` from a `<video>` element.
+
 ### `packages/render-core`
 
 This is the Remotion render package.
@@ -42,15 +106,27 @@ This is the Remotion render package.
 - It should stay independently runnable via `bun run dev:render`
 - Keep render-specific logic here instead of pushing it into `apps/web`
 
+#### `FerroComposite` Composition
+
+`src/FerroComposite.tsx` is the render-time composition. It reads all props via `getInputProps()` at runtime — layers, videoSrc, width, height, fps, durationInFrames. All dimensions are fully dynamic via `calculateMetadata` in `Root.tsx`.
+
+The `defaultProps` on the `<Composition>` in `Root.tsx` are **Studio preview defaults only**. At actual render time, pass real values via `inputProps` to `renderMedia()`.
+
+#### `src/compiler.ts` (render-core variant)
+
+Same logic as the web compiler, but injects `OffthreadVideo` instead of `Video`. This is required for correct frame-accurate rendering on the server. Do not swap them — `Video` will not render correctly at non-realtime speeds.
+
+## Prompt Caching
+
+- `generateLayer` calls cache the system prompt across parallel calls via `providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } }`
+- OpenAI caches automatically for prompts >1024 tokens (no explicit config needed)
+- `detectSkills` and `planGraphics` do not use caching — their system prompts are short
+
 ## Important Intentionality
 
-The current architecture is intentionally not fully integrated yet.
-
-- There is no shared package yet
-- There is no web-triggered render pipeline yet
-- There is no job orchestration layer yet
-
-That is expected. Do not invent a premature `packages/shared` or server render API unless the current task explicitly calls for it.
+- There is no shared package — do not invent a premature `packages/shared`
+- There is no web-triggered render pipeline yet (`/api/render` is Phase 2)
+- There is no job orchestration or streaming layer yet
 
 ## Symlink Guardrail
 
@@ -64,7 +140,7 @@ That is expected. Do not invent a premature `packages/shared` or server render A
 
 Those four entries are symlinks pointing back to `../../.agents/skills/remotion-best-practices`.
 
-Do not flatten, regenerate, or “clean up” this structure.
+Do not flatten, regenerate, or "clean up" this structure.
 If `packages/render-core` is ever moved again, preserve those relative links exactly or update them carefully so the CLIs continue to work.
 
 ## Editing Expectations
@@ -73,7 +149,3 @@ If `packages/render-core` is ever moved again, preserve those relative links exa
 - Keep the workspace install graph clean and Bun-managed
 - Preserve the current package boundary: web in `apps/web`, rendering in `packages/render-core`
 - Update root docs when changing the workspace shape or canonical commands
-
-## Current Direction
-
-The repo foundation is in place. The current direction is iterating on the first upload page in `apps/web`, not another structural rewrite.

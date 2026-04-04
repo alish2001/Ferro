@@ -1,8 +1,9 @@
 "use client"
 
-import type { ChangeEvent, DragEvent, FormEvent } from "react"
-import { useEffect, useRef, useState } from "react"
+import type { ChangeEvent, DragEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
+  ArrowLeft,
   Captions,
   Clapperboard,
   FileVideo,
@@ -17,48 +18,48 @@ import {
   type JobState,
 } from "@/components/upload/generation-status"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { ModelSelector } from "@/components/ui/model-selector"
+import { ResolutionSelector, type Resolution } from "@/components/ui/resolution-selector"
+import { CompositorPreview } from "@/components/preview/CompositorPreview"
+import { GraphicCard } from "@/components/preview/GraphicCard"
+import { getVideoMeta } from "@/helpers/video-meta"
+import type { FerroGenerateResponse, FerroLayer } from "@/app/api/generate/route"
 import { cn } from "@/lib/utils"
 
 const initialJobState: JobState = {
   tone: "idle",
   title: "Ready to generate",
-  detail:
-    "The button is stubbed for now. The actual render pipeline can plug into this next.",
+  detail: "Fill in the fields below, then hit Generate.",
 }
 
-const uploadTags = ["Source video", "Transcript", "Prompt"]
 const supportedVideoExtensions = [".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"]
 
 function isLikelyVideoFile(file: File) {
-  if (file.type.startsWith("video/")) {
-    return true
-  }
-
+  if (file.type.startsWith("video/")) return true
   const lowerName = file.name.toLowerCase()
-  return supportedVideoExtensions.some((extension) => lowerName.endsWith(extension))
+  return supportedVideoExtensions.some((ext) => lowerName.endsWith(ext))
 }
 
 export default function Home() {
+  const [step, setStep] = useState<"form" | "preview">("form")
   const [videoFile, setVideoFile] = useState<File | null>(null)
-  const [transcriptFileName, setTranscriptFileName] = useState<string | null>(
-    null
-  )
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null)
+  const [transcriptFileName, setTranscriptFileName] = useState<string | null>(null)
   const [jobState, setJobState] = useState<JobState>(initialJobState)
   const [isDraggingVideo, setIsDraggingVideo] = useState(false)
+  const [selectedModel, setSelectedModel] = useState("anthropic:claude-sonnet-4-6")
+  const [resolution, setResolution] = useState<Resolution>({ width: 1920, height: 1080 })
+  const [generationResult, setGenerationResult] = useState<FerroGenerateResponse | null>(null)
+  const [layers, setLayers] = useState<FerroLayer[]>([])
+
   const videoInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
 
   useEffect(() => {
     function preventWindowFileDrop(event: globalThis.DragEvent) {
       const items = event.dataTransfer?.items
-      const hasFiles = items
-        ? Array.from(items).some((item) => item.kind === "file")
-        : false
-
-      if (!hasFiles) {
-        return
-      }
-
+      const hasFiles = items ? Array.from(items).some((item) => item.kind === "file") : false
+      if (!hasFiles) return
       event.preventDefault()
     }
 
@@ -71,23 +72,22 @@ export default function Home() {
     }
   }, [])
 
+  // Revoke previous object URL when video changes
+  useEffect(() => {
+    return () => {
+      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
+    }
+  }, [videoObjectUrl])
+
   function syncVideoInput(file: File | null) {
     const input = videoInputRef.current
-
-    if (!input || typeof DataTransfer === "undefined") {
-      return
-    }
-
+    if (!input || typeof DataTransfer === "undefined") return
     const transfer = new DataTransfer()
-
-    if (file) {
-      transfer.items.add(file)
-    }
-
+    if (file) transfer.items.add(file)
     input.files = transfer.files
   }
 
-  function attachVideoFile(file: File | null) {
+  async function attachVideoFile(file: File | null) {
     if (!file) {
       setVideoFile(null)
       syncVideoInput(null)
@@ -111,9 +111,16 @@ export default function Home() {
     setJobState({
       tone: "idle",
       title: "Source video attached",
-      detail:
-        "Fill in the remaining fields and use the button below when you are ready.",
+      detail: "Fill in the remaining fields and hit Generate when ready.",
     })
+
+    // Read video dimensions + duration
+    try {
+      const meta = await getVideoMeta(file)
+      setResolution({ width: meta.width, height: meta.height })
+    } catch {
+      // Keep current resolution if we can't read metadata
+    }
   }
 
   function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
@@ -127,78 +134,172 @@ export default function Home() {
   }
 
   function handleVideoDragEnter(event: DragEvent<HTMLLabelElement>) {
-    const hasFiles = Array.from(event.dataTransfer.items).some(
-      (item) => item.kind === "file"
-    )
-
-    if (!hasFiles) {
-      return
-    }
-
+    const hasFiles = Array.from(event.dataTransfer.items).some((item) => item.kind === "file")
+    if (!hasFiles) return
     event.preventDefault()
     dragDepthRef.current += 1
     setIsDraggingVideo(true)
   }
 
   function handleVideoDragOver(event: DragEvent<HTMLLabelElement>) {
-    const hasFiles = Array.from(event.dataTransfer.items).some(
-      (item) => item.kind === "file"
-    )
-
-    if (!hasFiles) {
-      return
-    }
-
+    const hasFiles = Array.from(event.dataTransfer.items).some((item) => item.kind === "file")
+    if (!hasFiles) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
     setIsDraggingVideo(true)
   }
 
   function handleVideoDragLeave(event: DragEvent<HTMLLabelElement>) {
-    const hasFiles = Array.from(event.dataTransfer.items).some(
-      (item) => item.kind === "file"
-    )
-
-    if (!hasFiles) {
-      return
-    }
-
+    const hasFiles = Array.from(event.dataTransfer.items).some((item) => item.kind === "file")
+    if (!hasFiles) return
     event.preventDefault()
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
-
-    if (dragDepthRef.current === 0) {
-      setIsDraggingVideo(false)
-    }
+    if (dragDepthRef.current === 0) setIsDraggingVideo(false)
   }
 
   function handleVideoDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault()
     dragDepthRef.current = 0
     setIsDraggingVideo(false)
-
     const file = event.dataTransfer.files?.[0] ?? null
     attachVideoFile(file)
   }
 
-  function handleGenerate(event: FormEvent<HTMLFormElement>) {
+  async function handleGenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!videoFile || !isLikelyVideoFile(videoFile)) {
+    const formData = new FormData(event.currentTarget)
+    const taste = (formData.get("taste") as string) ?? ""
+    const transcript = (formData.get("transcript") as string) ?? ""
+    const instructions = (formData.get("prompt") as string) ?? ""
+
+    if (!taste && !transcript && !instructions) {
       setJobState({
         tone: "error",
-        title: "Source video missing",
-        detail:
-          "Upload a source video first.",
+        title: "Nothing to generate",
+        detail: "Fill in at least one field — taste, transcript, or instructions.",
       })
       return
     }
 
     setJobState({
-      tone: "success",
-      title: "Generate button pressed",
-      detail:
-        "The callback is stubbed and ready for the next pass.",
+      tone: "loading",
+      title: "Generating graphics…",
+      detail: "Detecting skills, planning layers, and generating code in parallel.",
     })
+
+    let videoDurationSeconds: number | undefined
+    if (videoFile) {
+      try {
+        const meta = await getVideoMeta(videoFile)
+        videoDurationSeconds = meta.durationSeconds
+      } catch {
+        // proceed without duration
+      }
+    }
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taste,
+          transcript,
+          instructions,
+          model: selectedModel,
+          width: resolution.width,
+          height: resolution.height,
+          videoDurationSeconds,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }))
+        throw new Error(err.error ?? `HTTP ${res.status}`)
+      }
+
+      const data: FerroGenerateResponse = await res.json()
+
+      // Create a fresh object URL for the compositor
+      if (videoFile) {
+        if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
+        setVideoObjectUrl(URL.createObjectURL(videoFile))
+      }
+
+      setGenerationResult(data)
+      setLayers(data.layers)
+      setStep("preview")
+    } catch (error) {
+      setJobState({
+        tone: "error",
+        title: "Generation failed",
+        detail: error instanceof Error ? error.message : "Something went wrong.",
+      })
+    }
+  }
+
+  function handleLayerCodeChange(index: number, code: string) {
+    setLayers((prev) =>
+      prev.map((layer, i) => (i === index ? { ...layer, code } : layer)),
+    )
+  }
+
+  if (step === "preview" && generationResult) {
+    return (
+      <main className="min-h-screen px-4 py-8 text-white sm:px-6 sm:py-10">
+        <div className="mx-auto w-full max-w-6xl">
+          {/* Back button */}
+          <div className="mb-8 flex items-center gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep("form")}
+              className="rounded-xl text-white/60 hover:text-white"
+            >
+              <ArrowLeft className="size-4" />
+              Back to form
+            </Button>
+            <div className="flex gap-2">
+              {generationResult.skills.map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-white/55"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Compositor preview */}
+          <div className="mb-8">
+            <CompositorPreview
+              videoObjectUrl={videoObjectUrl}
+              layers={layers}
+              fps={generationResult.fps}
+              width={generationResult.width}
+              height={generationResult.height}
+              durationInFrames={generationResult.durationInFrames}
+            />
+          </div>
+
+          {/* Per-layer cards */}
+          <div className="grid gap-6 md:grid-cols-2">
+            {layers.map((layer, i) => (
+              <GraphicCard
+                key={i}
+                layer={layer}
+                fps={generationResult.fps}
+                width={generationResult.width}
+                height={generationResult.height}
+                onCodeChange={(code) => handleLayerCodeChange(i, code)}
+              />
+            ))}
+          </div>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -213,8 +314,7 @@ export default function Home() {
               Upload a video and shape the Remotion brief.
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">
-              Source video on top. Taste, transcript, and prompt underneath.
-              Everything centered. The generate action stays stubbed for now.
+              Source video on top. Taste, transcript, and prompt underneath. Generate AI-powered motion graphics overlays.
             </p>
           </div>
 
@@ -273,21 +373,20 @@ export default function Home() {
                       : videoFile?.name ?? "Choose a video file"}
                   </p>
                   <p className="mt-1 text-xs text-white/52">
-                    MP4, MOV, WebM, AVI, or MKV.
+                    {videoFile
+                      ? `${resolution.width}×${resolution.height}`
+                      : "MP4, MOV, WebM, AVI, or MKV."}
                   </p>
-                </div>
-                <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-                  {uploadTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.26em] text-white/45"
-                    >
-                      {tag}
-                    </span>
-                  ))}
                 </div>
               </div>
             </label>
+
+            {/* Resolution selector — only shown when no video is attached */}
+            {!videoFile && (
+              <div className="rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+                <ResolutionSelector value={resolution} onChange={setResolution} />
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-3">
               <FieldCard
@@ -306,7 +405,7 @@ export default function Home() {
                 name="transcript"
                 label="Transcript"
                 title="Transcript"
-                description="Paste the spoken content here. The ticket also calls for a transcript-file path, so this card includes a small upload stub too."
+                description="Paste the spoken content here. Used to plan timing, pull quotes, and name lower thirds."
                 placeholder="Paste the transcript here, or attach a transcript file and keep notes in this box for timing cues, pull quotes, and selects."
                 icon={Captions}
                 iconClassName="text-white"
@@ -336,9 +435,7 @@ export default function Home() {
                 {transcriptFileName ? (
                   <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-xs text-white/60">
                     Transcript file ready:{" "}
-                    <span className="font-medium text-white">
-                      {transcriptFileName}
-                    </span>
+                    <span className="font-medium text-white">{transcriptFileName}</span>
                   </p>
                 ) : null}
               </FieldCard>
@@ -357,6 +454,12 @@ export default function Home() {
 
             <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
               <GenerationStatus jobState={jobState} />
+
+              <ModelSelector
+                value={selectedModel}
+                onChange={setSelectedModel}
+                className="w-full"
+              />
 
               <Button
                 type="submit"
