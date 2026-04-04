@@ -21,6 +21,10 @@ function guessExtension(file: File) {
   }
 }
 
+export async function ensureArtifactsRoot() {
+  await mkdir(getArtifactsRoot(), { recursive: true })
+}
+
 export async function getJobDirectory(jobId: string) {
   const jobDirectory = resolve(getArtifactsRoot(), jobId)
   await mkdir(jobDirectory, { recursive: true })
@@ -49,6 +53,7 @@ export async function getRenderOutputPath(jobId: string) {
 
 export async function removeFile(filePath: string | null) {
   if (!filePath) return
+
   await rm(filePath, { force: true })
 }
 

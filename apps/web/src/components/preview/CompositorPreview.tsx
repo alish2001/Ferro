@@ -1,10 +1,9 @@
 "use client"
 
-import { compileCode } from "@/remotion/compiler"
 import type { FerroLayer } from "@/lib/ferro-contracts"
+import { createBrowserCompositeComponent } from "@/remotion/browser-composite"
 import dynamic from "next/dynamic"
 import React, { useMemo } from "react"
-import { AbsoluteFill, Sequence, Video } from "remotion"
 
 const Player = dynamic(
   () => import("@remotion/player").then((m) => m.Player),
@@ -29,33 +28,10 @@ export function CompositorPreview({
   durationInFrames,
 }: CompositorPreviewProps) {
   const CompositeComponent = useMemo(() => {
-    const compiled = layers.map((layer) => ({
-      Component: compileCode(layer.code).Component,
-      from: layer.from,
-      durationInFrames: layer.durationInFrames,
-    }))
-
-    const videoSrc = videoObjectUrl
-
-    return function FerroComposite() {
-      return (
-        <AbsoluteFill>
-          {videoSrc ? (
-            <Video
-              src={videoSrc}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : null}
-          {compiled.map(({ Component, from, durationInFrames }, index) =>
-            Component ? (
-              <Sequence key={index} from={from} durationInFrames={durationInFrames}>
-                <Component />
-              </Sequence>
-            ) : null,
-          )}
-        </AbsoluteFill>
-      )
-    }
+    return createBrowserCompositeComponent({
+      layers,
+      videoSrc: videoObjectUrl,
+    })
   }, [layers, videoObjectUrl])
 
   return (
