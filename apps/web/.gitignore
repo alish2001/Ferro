@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# whisper.cpp runtime install (downloaded on first transcription run)
+whisper.cpp/

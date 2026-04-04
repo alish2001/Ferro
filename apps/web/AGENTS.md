@@ -25,9 +25,10 @@ This app uses **Vercel AI SDK v6**. The API changed significantly from v5:
 
 - `@remotion/player` is used for browser-side preview — always dynamic-import with `ssr: false`
 - `compileCode()` from `src/remotion/compiler.ts` turns LLM-generated code strings into React components via Babel + `new Function`
-- The compiler injects all Remotion APIs (Lottie, ThreeCanvas, Three.js, shapes, transitions, `Video`) — do not remove any injected APIs
+- The compiler injects all Remotion APIs (Lottie, ThreeCanvas, Three.js, shapes, transitions, `Video`) plus `createTikTokStyleCaptions` from `@remotion/captions` — do not remove any injected APIs
 - `Video` from `remotion` is used in the browser compiler (not `OffthreadVideo` — that is for `packages/render-core`)
 - Keep the current preview path intact. The working browser preview is not the same thing as MP4 export.
+- Generated components must NEVER hardcode absolute frame numbers. They are always wrapped in `<Sequence from={layer.from}>` by the compositor, so `useCurrentFrame()` returns 0 at the layer's start. Animate from frame 0 to `useVideoConfig().durationInFrames`.
 
 ## Server Render Export
 
@@ -42,9 +43,19 @@ This app uses **Vercel AI SDK v6**. The API changed significantly from v5:
 
 ## Generation Flow
 
-The form submits to `POST /api/generate`. The API route is a thin orchestrator that calls pure functions from `src/generation/`. Do not put generation logic in the route handler itself — keep it in the appropriate `generation/*.ts` module.
+The form submits to `POST /api/generate/stream` (NDJSON streaming). The API route is a thin orchestrator that calls pure functions from `src/generation/`. Do not put generation logic in the route handler itself — keep it in the appropriate `generation/*.ts` module.
 
-Layer types understood by the planner: `lower-third`, `title-card`, `stat-callout`, `quote-overlay`, `outro-card`.
+Layer types understood by the planner: `lower-third`, `title-card`, `stat-callout`, `quote-overlay`, `outro-card`, `captions`.
+
+The `captions` layer type is special — it bypasses LLM generation entirely. `pipeline.ts` detects `planLayer.type === "captions"` and calls `buildCaptionsLayerCode(captions)` instead of `generateLayer()`. It is only planned when `includeCaptionLayer: true` is in the request.
+
+## Transcription Flow
+
+`POST /api/transcribe` accepts a video file and streams NDJSON. The client stores:
+- `FerroCaption[]` — word-level captions with `startMs`/`endMs` in milliseconds
+- `detectedVideoFps` — native fps detected via ffprobe
+
+Both are passed to `POST /api/generate/stream`. The planner receives captions pre-converted to `{ text, fromFrame, toFrame }` so it can place layers without doing any math. `videoFps` overrides the planner's own fps choice via `canonicalFps = request.videoFps ?? plan.fps` in `pipeline.ts`.
 
 ## Page State
 

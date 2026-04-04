@@ -31,6 +31,7 @@ import {
 } from "@/components/upload/generation-status"
 import { getVideoMeta } from "@/helpers/video-meta"
 import type {
+  FerroCaption,
   FerroGenerateRequest,
   FerroGenerateStreamEvent,
   FerroGenerationSession,
@@ -44,6 +45,7 @@ import type {
   FerroRenderMode,
   FerroRenderPayload,
 } from "@/lib/ferro-contracts"
+import type { TranscribeStreamEvent } from "@/app/api/transcribe/route"
 import {
   listRecentGenerationSessions,
   loadGenerationSession,
@@ -225,6 +227,14 @@ export default function Home() {
   const [renderError, setRenderError] = useState<string | null>(null)
   const [isStartingServerRender, setIsStartingServerRender] = useState(false)
   const [isClientRendering, setIsClientRendering] = useState(false)
+
+  // Transcription state
+  const [transcriptText, setTranscriptText] = useState("")
+  const [captions, setCaptions] = useState<FerroCaption[] | null>(null)
+  const [detectedVideoFps, setDetectedVideoFps] = useState<number | null>(null)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [transcribeStatus, setTranscribeStatus] = useState<string | null>(null)
+  const [includeCaptionLayer, setIncludeCaptionLayer] = useState(false)
 
   const formVideoInputRef = useRef<HTMLInputElement>(null)
   const previewVideoInputRef = useRef<HTMLInputElement>(null)
@@ -529,6 +539,85 @@ export default function Home() {
   function handleTranscriptFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null
     setTranscriptFileName(file?.name ?? null)
+    if (file) {
+      file.text().then((text) => setTranscriptText(text)).catch(() => null)
+    }
+  }
+
+  async function handleTranscribe() {
+    if (!videoFile) {
+      setFallbackJobState({
+        tone: "error",
+        title: "No video",
+        detail: "Upload a video first, then click Transcribe.",
+      })
+      return
+    }
+
+    setIsTranscribing(true)
+    setTranscribeStatus("Extracting audio…")
+    setCaptions(null)
+    setDetectedVideoFps(null)
+    setTranscriptText("")
+
+    try {
+      const body = new FormData()
+      body.append("video", videoFile)
+
+      const res = await fetch("/api/transcribe", { method: "POST", body })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      let segmentBuffer = ""
+
+      await readNdjsonStream<TranscribeStreamEvent>(res, (event) => {
+        switch (event.type) {
+          case "extracting":
+            setTranscribeStatus("Extracting audio…")
+            break
+          case "videoMeta":
+            setDetectedVideoFps(event.fps)
+            break
+          case "transcribing":
+            setTranscribeStatus("Transcribing…")
+            break
+          case "installing":
+            setTranscribeStatus("Installing whisper.cpp (first run)…")
+            break
+          case "progress":
+            setTranscribeStatus(`Transcribing… ${Math.round(event.pct * 100)}%`)
+            break
+          case "segment": {
+            const { startMs, endMs, text } = event.segment
+            const fmt = (ms: number) => (ms / 1000).toFixed(2) + "s"
+            segmentBuffer += `[${fmt(startMs)} → ${fmt(endMs)}] ${text}\n`
+            setTranscriptText(segmentBuffer) // replaced by raw JSON once captions arrive
+            break
+          }
+          case "captions": {
+            const mapped: FerroCaption[] = event.captions.map((c) => ({
+              text: c.text,
+              startMs: c.startMs,
+              endMs: c.endMs,
+            }))
+            setCaptions(mapped)
+            // Show the exact JSON being sent to the planner so it's debuggable
+            setTranscriptText(JSON.stringify(mapped, null, 2))
+            setTranscribeStatus("Done")
+            break
+          }
+          case "error":
+            throw new Error(event.error)
+        }
+      })
+    } catch (err) {
+      setFallbackJobState({
+        tone: "error",
+        title: "Transcription failed",
+        detail: err instanceof Error ? err.message : "Unknown error",
+      })
+    } finally {
+      setIsTranscribing(false)
+    }
   }
 
   function handleVideoDragEnter(event: DragEvent<HTMLLabelElement>) {
@@ -607,16 +696,22 @@ export default function Home() {
       }
     }
 
+    // Use controlled transcript state when available (populated by transcribe/file)
+    const finalTranscript = transcriptText || transcript
+
     const request: FerroGenerateRequest = {
       taste,
-      transcript,
+      transcript: finalTranscript,
       instructions,
       model: selectedModel,
       width: resolution.width,
       height: resolution.height,
       videoDurationSeconds,
+      videoFps: detectedVideoFps ?? undefined,
       hasSourceVideo: Boolean(videoFile),
       sourceVideoName: videoFile?.name ?? null,
+      captions: captions ?? undefined,
+      includeCaptionLayer: includeCaptionLayer || undefined,
     }
 
     try {
@@ -1405,12 +1500,26 @@ export default function Home() {
                 name="transcript"
                 label="Transcript"
                 title="Transcript"
-                description="Paste the spoken content here. Used to plan timing, pull quotes, and name lower thirds."
-                placeholder="Paste the transcript here, or attach a transcript file and keep notes in this box for timing cues, pull quotes, and selects."
+                description="Paste the spoken content here or transcribe your video for precise ms-level timing used by the graphics director."
+                placeholder="Paste a transcript here, or upload a video and click Transcribe to auto-generate one with timestamps."
                 icon={Captions}
                 iconClassName="text-white"
+                value={transcriptText}
+                onChange={(e) => setTranscriptText(e.target.value)}
                 action={
                   <>
+                    <button
+                      type="button"
+                      disabled={!videoFile || isTranscribing}
+                      onClick={handleTranscribe}
+                      className={cn(
+                        buttonVariants({ variant: "outline", size: "sm" }),
+                        "cursor-pointer rounded-full border-white/10 bg-white/[0.05] text-white shadow-none hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40",
+                      )}
+                    >
+                      <Captions className="size-3.5" />
+                      {isTranscribing ? transcribeStatus ?? "Transcribing…" : "Transcribe"}
+                    </button>
                     <label
                       htmlFor="transcript-file"
                       className={cn(
@@ -1440,6 +1549,11 @@ export default function Home() {
                     </span>
                   </p>
                 ) : null}
+                {captions && captions.length > 0 ? (
+                  <p className="rounded-2xl border border-[#39E508]/20 bg-[#39E508]/[0.06] px-3 py-2 text-center text-xs text-[#39E508]/80">
+                    {captions.length} word-level timestamps ready
+                  </p>
+                ) : null}
               </FieldCard>
 
               <FieldCard
@@ -1453,6 +1567,21 @@ export default function Home() {
                 iconClassName="text-[var(--accent-cool)]"
               />
             </div>
+
+            {/* Include captions toggle — only shown when captions are available */}
+            {captions && captions.length > 0 && (
+              <label className="mx-auto flex max-w-xs cursor-pointer items-center gap-3 rounded-full border border-white/10 bg-white/[0.035] px-4 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]">
+                <input
+                  type="checkbox"
+                  checked={includeCaptionLayer}
+                  onChange={(e) => setIncludeCaptionLayer(e.target.checked)}
+                  className="size-4 accent-[#39E508]"
+                />
+                <span>
+                  Include TikTok-style captions layer
+                </span>
+              </label>
+            )}
 
             <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
               <GenerationStatus

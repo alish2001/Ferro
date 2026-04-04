@@ -1,4 +1,5 @@
 import * as Babel from "@babel/standalone"
+import { createTikTokStyleCaptions } from "@remotion/captions"
 import { Lottie } from "@remotion/lottie"
 import * as RemotionShapes from "@remotion/shapes"
 import { ThreeCanvas } from "@remotion/three"
@@ -138,6 +139,7 @@ export function compileCode(code: string): CompilationResult {
       "wipe",
       "flip",
       "clockWipe",
+      "createTikTokStyleCaptions",
       wrappedCode,
     )
 
@@ -193,6 +195,7 @@ export function compileCode(code: string): CompilationResult {
       wipe,
       flip,
       clockWipe,
+      createTikTokStyleCaptions,
     )
 
     if (typeof Component !== "function") {

@@ -35,6 +35,14 @@ export const FerroLayerVersionSourceSchema = z.enum([
 
 export type FerroLayerVersionSource = z.infer<typeof FerroLayerVersionSourceSchema>
 
+export const FerroCaptionSchema = z.object({
+  text: z.string(),
+  startMs: z.number(),
+  endMs: z.number(),
+})
+
+export type FerroCaption = z.infer<typeof FerroCaptionSchema>
+
 export const FerroLayerSchema = z.object({
   id: z.string(),
   code: z.string(),
@@ -80,8 +88,14 @@ export const FerroGenerateRequestSchema = z.object({
   width: z.number().int().min(1),
   height: z.number().int().min(1),
   videoDurationSeconds: z.number().positive().optional(),
+  // Native fps of the source video — planner and compositor use this to match frame rate
+  videoFps: z.number().int().min(1).max(240).optional(),
   hasSourceVideo: z.boolean().optional(),
   sourceVideoName: z.string().nullable().optional(),
+  // Word-level timestamped captions from whisper — always used by planner when present
+  captions: z.array(FerroCaptionSchema).optional(),
+  // Whether to include a TikTok-style animated caption overlay layer
+  includeCaptionLayer: z.boolean().optional(),
 })
 
 export type FerroGenerateRequest = z.infer<typeof FerroGenerateRequestSchema>
@@ -90,6 +104,9 @@ export const FerroGenerationRequestSnapshotSchema =
   FerroGenerateRequestSchema.extend({
     hasSourceVideo: z.boolean(),
     sourceVideoName: z.string().nullable(),
+    videoFps: z.number().int().min(1).max(240).optional(),
+    captions: z.array(FerroCaptionSchema).optional(),
+    includeCaptionLayer: z.boolean().optional(),
   })
 
 export type FerroGenerationRequestSnapshot = z.infer<

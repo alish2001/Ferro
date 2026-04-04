@@ -10,6 +10,7 @@ import type {
 } from "@/lib/ferro-contracts"
 import { FAST_MODEL_ID, getModel } from "@/lib/models"
 import { getCombinedSkillContent } from "@/skills"
+import { buildCaptionsLayerCode } from "./captions-layer"
 import { generateLayer } from "./generator"
 import { planGraphics } from "./planner"
 import { buildSystemPrompt } from "./prompts"
@@ -34,8 +35,11 @@ function createRequestSnapshot(
     width: request.width,
     height: request.height,
     videoDurationSeconds: request.videoDurationSeconds,
+    videoFps: request.videoFps,
     hasSourceVideo: request.hasSourceVideo ?? false,
     sourceVideoName: request.sourceVideoName ?? null,
+    captions: request.captions,
+    includeCaptionLayer: request.includeCaptionLayer,
   }
 }
 
@@ -166,25 +170,30 @@ export async function runGenerationPipeline({
         transcript: request.transcript,
         instructions: request.instructions,
         videoDurationSeconds: request.videoDurationSeconds,
+        videoFps: request.videoFps,
+        captions: request.captions,
+        includeCaptionLayer: request.includeCaptionLayer,
       },
       fastModel,
     )
 
     const layers = plan.layers.map((layer) => createQueuedLayer(layer))
     session.layers = layers
-    session.fps = plan.fps
+    // If the source video's native fps was detected, use it — don't let the planner guess
+    const canonicalFps = request.videoFps ?? plan.fps
+    session.fps = canonicalFps
     session.durationInFrames = request.videoDurationSeconds
-      ? Math.round(request.videoDurationSeconds * plan.fps)
+      ? Math.round(request.videoDurationSeconds * canonicalFps)
       : Math.max(
           ...layers.map((layer) => layer.from + layer.durationInFrames),
-          plan.fps * 30,
+          canonicalFps * 30,
         )
     session.updatedAt = nowIso()
 
     await onEvent?.({
       type: "plan-ready",
       generationId,
-      fps: plan.fps,
+      fps: canonicalFps,
       width: request.width,
       height: request.height,
       durationInFrames: session.durationInFrames,
@@ -211,13 +220,18 @@ export async function runGenerationPipeline({
           layerId: queuedLayer.id,
         })
 
-        const rawCode = await generateLayer(
-          `Layer type: ${planLayer.type}\n\n${planLayer.brief}`,
-          systemPrompt,
-          selectedModel,
-        )
-
-        const code = extractComponentCode(stripMarkdownFences(rawCode))
+        // Caption layers use a pre-built template — no LLM call needed
+        let code: string
+        if (planLayer.type === "captions") {
+          code = buildCaptionsLayerCode(request.captions ?? [])
+        } else {
+          const rawCode = await generateLayer(
+            `Layer type: ${planLayer.type}\n\n${planLayer.brief}`,
+            systemPrompt,
+            selectedModel,
+          )
+          code = extractComponentCode(stripMarkdownFences(rawCode))
+        }
         const version: FerroLayerVersion = {
           id: crypto.randomUUID(),
           layerId: queuedLayer.id,

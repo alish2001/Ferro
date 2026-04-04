@@ -47,6 +47,7 @@ Pure async functions — no React, no Next.js imports. Each module does one thin
 | `generation/skills.ts` | `detectSkills(prompt, model)` → `SkillName[]` |
 | `generation/planner.ts` | `planGraphics(brief, model)` → layer plan with timing |
 | `generation/generator.ts` | `generateLayer(brief, systemPrompt, model)` → code string |
+| `generation/captions-layer.ts` | `buildCaptionsLayerCode(captions)` → pre-built Remotion component string (no LLM call) |
 
 All generation calls use the Vercel AI SDK v6 pattern: `generateText` with `output: Output.object({ schema })`. **Do not use `generateObject`** — it is deprecated in AI SDK v6. Import `Output` (capital O) from `"ai"`.
 
@@ -63,12 +64,35 @@ All generation calls use the Vercel AI SDK v6 pattern: `generateText` with `outp
 - `video-overlay.md` is Ferro-specific: overlay rules (no `backgroundColor` on `AbsoluteFill`, position constants, min font sizes, frame coverage limits)
 - To add a skill: create a `.md` file in `src/skills/` and add its name to `SKILL_NAMES` in `index.ts`
 
-#### API Route (`src/app/api/generate/route.ts`)
+#### API Route (`src/app/api/generate/stream/route.ts`)
 
-Thin orchestrator. Sequence: `detectSkills` → `planGraphics` → `getCombinedSkillContent` → `buildSystemPrompt` → `Promise.all(generateLayer×N)` → sanitize → respond.
+Thin orchestrator. Streams NDJSON via `createNdjsonResponse`. Sequence: `detectSkills` → `planGraphics` → `getCombinedSkillContent` → `buildSystemPrompt` → `Promise.allSettled(generateLayer×N)` → sanitize → respond. Caption layers skip LLM generation entirely and use `buildCaptionsLayerCode()`.
 
-Request shape: `{ taste, transcript, instructions, model, width, height, videoDurationSeconds? }`
+Request shape: `{ taste, transcript, instructions, model, width, height, videoDurationSeconds?, videoFps?, captions?, includeCaptionLayer? }`
 Response shape: `{ layers, fps, width, height, durationInFrames, skills }`
+
+#### Transcription API (`src/app/api/transcribe/route.ts`)
+
+`POST /api/transcribe` accepts `multipart/form-data` with a `video` field. Streams NDJSON events:
+- `installing` — whisper.cpp first-run install in progress
+- `extracting` — writing video to temp file
+- `videoMeta` — detected native fps via ffprobe (`{ fps: number }`)
+- `transcribing` — whisper running
+- `segment` — real-time sentence-level segment as whisper processes (`{ startMs, endMs, text }`)
+- `progress` — 0–1 float
+- `captions` — final word-level `Caption[]` from `toCaptions()`
+- `error`
+
+#### Whisper Module (`src/lib/whisper.ts`)
+
+- `ensureWhisperInstalled()` — lazy install + model download, cached via module-level promise
+- `isWhisperReady()` — fast disk check before installing
+- `detectVideoFps(videoPath)` — runs bundled ffprobe via `RenderInternals.callFf`, returns nearest common fps (24/25/30/48/50/60), defaults to 30
+- `transcribeVideo(videoPath, onSegment, onProgress)` — extracts 16kHz WAV via `RenderInternals.callFf({ bin: "ffmpeg" })`, spawns whisper binary directly with `--max-len 1 --dtw medium.en -ojf --split-on-word`, streams segment events in real time, returns word-level `Caption[]` from `toCaptions()`
+
+Key: `--max-len 1` forces one token per segment = one `Caption` per word. Without it, `toCaptions()` returns one entry per sentence.
+
+Whisper constants: `WHISPER_PATH=./whisper.cpp`, `WHISPER_VERSION=1.6.0`, `WHISPER_MODEL=medium.en`
 
 #### Render Export (`src/app/api/render/` and `src/render/`)
 
@@ -85,9 +109,13 @@ Server-side MP4 export now lives in the web app.
 
 #### Browser Compiler (`src/remotion/compiler.ts`)
 
-Ported from `template-prompt-to-motion-graphics-saas`. Strips imports from LLM-generated code, wraps in a function, transpiles with `@babel/standalone`, and evals via `new Function(...)` with all Remotion APIs injected. Keep all injected APIs (Lottie, ThreeCanvas, Three.js, shapes, transitions). The `Video` component from `remotion` is injected for use in browser preview.
+Strips imports from LLM-generated code, wraps in a function, transpiles with `@babel/standalone`, and evals via `new Function(...)` with all Remotion APIs injected. The `Video` component from `remotion` is injected for browser preview (not `OffthreadVideo` — that's render-core only).
 
-Do not remove injected APIs to "clean up" — the LLM generates code that depends on them.
+**Injected globals include `createTikTokStyleCaptions` from `@remotion/captions`** — required for the pre-built captions layer template. Do not remove it.
+
+Do not remove any injected APIs to "clean up" — LLM-generated and pre-built components depend on them.
+
+**Critical rule for generated components:** Components must NEVER hardcode absolute frame numbers (e.g. `START_FRAME = 553`). They are always placed inside a `<Sequence from={layer.from}>` by the compositor, so `useCurrentFrame()` returns 0 at the layer's start. Components must animate from frame 0 to `useVideoConfig().durationInFrames`.
 
 #### Preview Components (`src/components/preview/`)
 
@@ -113,7 +141,7 @@ Two-step UI: `step === "form"` shows the upload form; `step === "preview"` shows
 #### Helpers (`src/helpers/`)
 
 - `sanitize-response.ts` — `stripMarkdownFences`, `extractComponentCode` (brace counting). Used to sanitize LLM output even when using structured outputs.
-- `video-meta.ts` — browser-only `getVideoMeta(file)`: reads `videoWidth`, `videoHeight`, and `duration` from a `<video>` element.
+- `video-meta.ts` — browser-only `getVideoMeta(file)`: reads `videoWidth`, `videoHeight`, and `duration` from a `<video>` element. Note: browsers do not expose native fps — fps is detected server-side via ffprobe during transcription.
 
 ### `packages/render-core`
 
@@ -210,6 +238,54 @@ That later split is mainly about cleaner deployment boundaries and better long-t
 #### `src/compiler.ts` (render-core variant)
 
 Same logic as the web compiler, but injects `OffthreadVideo` instead of `Video`. This is required for correct frame-accurate rendering on the server. Do not swap them — `Video` will not render correctly at non-realtime speeds.
+
+**Also injects `createTikTokStyleCaptions`** from `@remotion/captions` — same reason as the browser compiler. If you add a new pre-built layer template that uses a new library function, add it to **both** compilers and to `packages/render-core/package.json`, then rebuild the bundle.
+
+## Remotion Versioning
+
+All Remotion packages across both `apps/web` and `packages/render-core` must be pinned to the **same exact version** with no `^` prefix. Version mismatches cause React context failures, hook errors, and silent render breakages.
+
+Current pinned version: **4.0.445**
+
+When upgrading Remotion:
+1. Update all `@remotion/*` and `remotion` entries in both `apps/web/package.json` and `packages/render-core/package.json` to the same version
+2. Run `bun install` from the repo root
+3. Run `bun run build:render-bundle`
+4. Verify with `bun run --cwd packages/render-core node_modules/.bin/remotion versions`
+
+## Captions and Transcription
+
+### Data Flow
+
+```
+Upload video → POST /api/transcribe
+  → ffprobe detects native fps → emits videoMeta event
+  → ffmpeg extracts 16kHz WAV
+  → whisper binary (--max-len 1 --dtw medium.en) runs
+  → segment events stream in real time (sentence-level, for UI display)
+  → toCaptions() produces word-level Caption[] (one entry per word)
+  → captions event emits raw Caption[]
+```
+
+Client stores `FerroCaption[]` (word-level, ms timestamps) and `detectedVideoFps`. Both are passed in the generate request.
+
+### Planner Receives
+
+When captions are present, the planner receives the raw `FerroCaption[]` as JSON with `fromFrame`/`toFrame` **pre-computed** at the detected fps — no math required from the LLM. It outputs `from` and `durationInFrames` as integer frame numbers directly.
+
+### Captions Layer
+
+`generation/captions-layer.ts` exports `buildCaptionsLayerCode(captions)` which returns a self-contained Remotion component string using `createTikTokStyleCaptions`. This is a pre-built template — no LLM call. It is used when the planner outputs a layer of type `captions`. The pipeline detects `planLayer.type === "captions"` and skips `generateLayer()` entirely.
+
+Layer types understood by the planner: `lower-third`, `title-card`, `stat-callout`, `quote-overlay`, `outro-card`, `captions`.
+
+### Key Contracts
+
+`FerroCaption`: `{ text: string, startMs: number, endMs: number }`
+
+`FerroGenerateRequest` additions: `videoFps?: number`, `captions?: FerroCaption[]`, `includeCaptionLayer?: boolean`
+
+`videoFps` from detection overrides the planner's fps output — `canonicalFps = request.videoFps ?? plan.fps` in `pipeline.ts`.
 
 ## Prompt Caching
 

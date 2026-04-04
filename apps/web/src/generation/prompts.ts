@@ -11,6 +11,9 @@ These components render OVER a source video — they are graphic layers, not bac
 5. Use spring() for entrances and transitions, interpolate() for linear progress
 6. Always include { extrapolateLeft: "clamp", extrapolateRight: "clamp" } on interpolate()
 7. Minimum font sizes: 36px for labels, 56px for titles (at 1080p)
+8. NEVER hardcode absolute frame numbers like START_FRAME = 553. The component is always
+   placed by a parent Sequence — useCurrentFrame() returns 0 at the moment the layer begins.
+   Animate from frame 0 to useVideoConfig().durationInFrames. The planner handles placement.
 
 ## COMPONENT STRUCTURE
 

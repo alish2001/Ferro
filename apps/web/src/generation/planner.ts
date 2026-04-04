@@ -2,12 +2,15 @@ import { generateText, Output } from "ai"
 import type { LanguageModel } from "ai"
 import { z } from "zod"
 
+import type { FerroCaption } from "@/lib/ferro-contracts"
+
 export const GraphicLayerTypeSchema = z.enum([
   "lower-third",
   "title-card",
   "stat-callout",
   "quote-overlay",
   "outro-card",
+  "captions",
 ])
 
 export type GraphicLayerType = z.infer<typeof GraphicLayerTypeSchema>
@@ -39,47 +42,88 @@ export type GraphicPlan = z.infer<typeof GraphicPlanSchema>
 
 const PLANNER_SYSTEM_PROMPT = `You are a motion graphics director for video productions.
 
-Given a video brief (taste/style, transcript, and optional instructions), decide what overlay
-graphics to create, what they show, and when they appear in the video.
+Given a video brief (taste/style, timestamped transcript, and optional instructions), plan the overlay graphics: what they show and exactly when they appear.
 
-Return 1–4 graphic layers. Use the provided fps and video duration to calculate realistic frame numbers.
+Return 1–4 graphic layers. You choose the fps (default 30) and must compute all frame positions from that fps.
 
-Layer types:
-- lower-third: Speaker name + role, appears at bottom ~15% of frame when someone speaks
-- title-card: Opening title or section header, usually within the first few seconds
-- stat-callout: Animated number or data point appearing next to relevant spoken content
-- quote-overlay: A key quote or phrase from the transcript, centered or positioned prominently
-- outro-card: Closing CTA or branding card, appears in the final 3-5 seconds
+## FRAME NUMBERS
 
-Guidelines:
-- If the transcript mentions a specific person, include a lower-third
-- If there's a strong opening line, consider a title-card
-- If instructions specify specific graphics, follow them exactly
-- Typical overlay duration: lower-thirds 2-4s, title cards 3-5s, outros 4-8s
-- fps is typically 30; multiply seconds by fps for frame numbers`
+When word-level captions are provided, each word already has fromFrame and toFrame computed.
+Use fromFrame directly as the "from" value for a layer — no math needed.
+For duration, use a sensible number of frames (e.g. 2s = 2*fps frames).
+
+## TIMING RULES — non-negotiable
+
+1. Spread graphics across the video — do NOT put everything at the beginning
+2. No two graphics may overlap in time (check: layerA.from + layerA.durationInFrames <= layerB.from)
+3. Set "from" to the fromFrame of the word where the relevant topic begins
+4. Leave a gap of at least fps frames (1 second) between consecutive graphics
+
+## LAYER TYPES
+
+- lower-third: Speaker name/role banner at bottom of frame. Duration: 2–4s. Place when they first speak.
+- title-card: Big opening title or section header. Duration: 3–5s. Usually from: 0 or near the opening.
+- stat-callout: Animated number or data point. Duration: 3–5s. Place exactly when the stat is spoken.
+- quote-overlay: Key phrase pulled from the transcript. Duration: 3–6s. Place at the exact timestamp it's said.
+- outro-card: Closing CTA or branding. Duration: 4–8s. Place in the final 3–5 seconds of the video.
+- captions: TikTok-style animated subtitles synced to speech. ONLY include if INCLUDE_CAPTION_LAYER is true. Always from: 0, durationInFrames: full video length.
+
+## BRIEF QUALITY
+
+The brief you write for each layer is the only context the graphic generator sees.
+- Include the EXACT words from the transcript that this graphic accompanies
+- Mention the visual style, layout, and what text/numbers to display
+- Example: "Lower-third for host Alex Chen appearing at 7.5s when he says 'welcome to the show'. Show name 'Alex Chen' and title 'Host'. White text on dark semi-transparent band at bottom."
+
+## OTHER GUIDELINES
+
+- If the transcript names a specific person, include a lower-third near where they first speak
+- If instructions specify particular graphics, follow them exactly
+- If no transcript timing is available, distribute graphics evenly across the video`
 
 export interface PlanBrief {
   taste: string
   transcript: string
   instructions: string
   videoDurationSeconds?: number
+  videoFps?: number
+  captions?: FerroCaption[]
+  includeCaptionLayer?: boolean
 }
+
 
 export async function planGraphics(
   brief: PlanBrief,
   model: LanguageModel,
 ): Promise<GraphicPlan> {
+  const fps = brief.videoFps ?? 30
   const videoDuration = brief.videoDurationSeconds
     ? `\nVideo duration: ${brief.videoDurationSeconds.toFixed(1)} seconds`
+    : ""
+  const fpsLine = `\nFPS: ${fps}`
+
+  // Pre-compute frame numbers so the LLM reads them directly — no math required
+  const transcriptSection =
+    brief.captions && brief.captions.length > 0
+      ? `WORD-LEVEL CAPTIONS (each word has fromFrame and toFrame already computed at ${fps}fps):\n${JSON.stringify(
+          brief.captions.map((c) => ({
+            text: c.text,
+            fromFrame: Math.round((c.startMs / 1000) * fps),
+            toFrame: Math.round((c.endMs / 1000) * fps),
+          })),
+        )}`
+      : `TRANSCRIPT:\n${brief.transcript || "No transcript provided"}`
+
+  const captionLayerLine = brief.includeCaptionLayer
+    ? "\nINCLUDE_CAPTION_LAYER: true — Add one 'captions' layer starting at frame 0 spanning the full video."
     : ""
 
   const prompt = `TASTE/STYLE: ${brief.taste || "No style preference specified"}
 
-TRANSCRIPT:
-${brief.transcript || "No transcript provided"}
+${transcriptSection}
 
 INSTRUCTIONS: ${brief.instructions || "No specific instructions — use taste and transcript to decide"}
-${videoDuration}`
+${videoDuration}${fpsLine}${captionLayerLine}`
 
   const result = await generateText({
     model,
