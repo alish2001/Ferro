@@ -9,6 +9,7 @@ const GUIDANCE_SKILLS = [
   "transitions",
   "sequencing",
   "video-overlay",
+  "word-reveal",
 ] as const
 
 export const SKILL_NAMES = [...GUIDANCE_SKILLS] as const
@@ -47,6 +48,7 @@ Guidance categories:
 - transitions: fade-in/fade-out overlays, wipe effects, animated reveals between states
 - sequencing: multiple elements appearing at different times, staggered entrances, choreographed overlays
 - video-overlay: ANY overlay graphic that renders over a video (lower thirds, title cards, supers, outros, callouts)
+- word-reveal: word-by-word text reveal, sequential word animation, staggered text entrance, kinetic word reveal, words appearing one at a time
 
 Return an array of matching category names. Always include "video-overlay" for any overlay graphic.
 Return an empty array if none apply.`
