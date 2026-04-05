@@ -50,7 +50,7 @@ function Arrow() {
 function DurationLabel({ ms }: { ms: number | null }) {
   if (ms == null) return null
   return (
-    <span className="tabular-nums text-[10px] text-white/35">
+    <span className="tabular-nums text-[10px] text-white/50">
       {(ms / 1000).toFixed(1)}s
     </span>
   )
@@ -61,7 +61,7 @@ function TokenLabel({ usage }: { usage: DevModeStageTrace["tokenUsage"] }) {
   const total = usage.inputTokens + usage.outputTokens
   if (total === 0) return null
   return (
-    <span className="tabular-nums text-[10px] text-white/30">
+    <span className="tabular-nums text-[10px] text-white/50">
       {(total / 1000).toFixed(1)}k tok
     </span>
   )
@@ -146,7 +146,7 @@ export function PipelineFlowchart({
   return (
     <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-white/[0.015] p-4">
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/50">
           Pipeline
         </span>
       </div>
