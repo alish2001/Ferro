@@ -63,6 +63,31 @@ Both are passed to `POST /api/generate/stream`. The planner receives captions pr
 
 - The preview step also owns render/export state: selected render mode, server job polling state, client fallback progress, and download links
 
+## Dev Mode (Pipeline Inspector)
+
+When `devMode: true` is included in a `FerroGenerateRequest`, the pipeline emits `debug-stage-update` NDJSON events alongside the regular stream events. These carry the full system prompt, user prompt, raw output, token usage, timing, model ID, and finish reason for each stage.
+
+### Architecture
+
+- Each stage function (`detectSkills`, `planGraphics`, `generateLayer`) supports a `returnTrace` overload that returns an enriched result including prompts and `generateText()` metadata. The pipeline calls this overload only when `devMode` is true — zero overhead otherwise.
+- `DevModeStageTrace` is the contract type for debug data (defined in `ferro-contracts.ts`).
+- The `PipelineFlowchart` and `StageDetail` components live in `src/components/dev-mode/`. They receive traces via a `Map<string, DevModeStageTrace>` managed in `page.tsx`.
+
+### Stage re-runs
+
+`POST /api/generate/rerun` accepts a `FerroDevRerunRequestSchema` with a `stageId`, optional prompt overrides, a `cascade` flag, and the previous run's context. It re-executes just that stage (or cascades downstream) and streams back both `debug-stage-update` and standard events so the client can update both the flowchart and the session state.
+
+### Stage IDs
+
+- `"skill-detection"` — skill detection
+- `"planning"` — graphic planning
+- `"system-prompt-build"` — system prompt assembly (no LLM, deterministic)
+- `"layer-gen-{layerId}"` — per-layer code generation
+
+### Adding new stages
+
+If you add a new pipeline stage, follow the existing pattern: emit a `debug-stage-update` with `status: "running"` before the call, call the stage function with `{ returnTrace: true }`, then emit with `status: "complete"` and the trace data. Use the `makeTrace()` helper in `pipeline.ts`.
+
 ## Resolution
 
 - If a video is uploaded, `getVideoMeta(file)` reads real dimensions and updates `resolution` state automatically
