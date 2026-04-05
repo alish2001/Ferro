@@ -77,8 +77,11 @@ export function GenerationStatus({
 
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       className={cn(
-        "w-full rounded-[1.35rem] border px-4 py-3 text-center",
+        "w-full rounded-card-status border px-4 py-3 text-center",
         toneClasses[jobState.tone],
       )}
     >
@@ -113,7 +116,7 @@ export function GenerationStatus({
       ) : null}
 
       {totalLayers ? (
-        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.24em] text-white/38">
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.24em] text-white/50">
           {totalLayers} layer{totalLayers === 1 ? "" : "s"} in this pass
         </p>
       ) : null}

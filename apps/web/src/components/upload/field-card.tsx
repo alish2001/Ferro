@@ -41,7 +41,7 @@ export function FieldCard({
   ...textareaProps
 }: FieldCardProps) {
   return (
-    <Card className="rounded-[1.75rem] border border-white/12 bg-white/[0.035] py-0 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+    <Card className="rounded-card border border-white/12 bg-white/[0.035] py-0 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
       <CardHeader className="px-5 pt-5 text-center">
         <CardTitle className="justify-center gap-2 text-xl tracking-[-0.04em] text-white">
           <Icon className={cn("size-4", iconClassName)} />
@@ -62,7 +62,7 @@ export function FieldCard({
           name={name}
           placeholder={placeholder}
           className={cn(
-            "min-h-[240px] rounded-[1.25rem] border-white/12 bg-black/40 px-4 py-3 text-sm leading-7 text-white shadow-none placeholder:text-white/38 focus-visible:border-white/24 focus-visible:ring-white/15",
+            "min-h-[240px] rounded-card-inner border-white/12 bg-black/40 px-4 py-3 text-sm leading-7 text-white shadow-none placeholder:text-white/45 focus-visible:border-white/24 focus-visible:ring-white/15",
             className
           )}
           {...textareaProps}

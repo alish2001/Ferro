@@ -1,20 +1,32 @@
 "use client"
 
-import { motion } from "framer-motion"
-import { useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 
 import { AnimatedProgress } from "@/components/ui/animated-progress"
+import { ErrorBoundary } from "@/components/ui/error-boundary"
 import type { FerroLayer, FerroLayerMessage } from "@/lib/ferro-contracts"
 import { compileCode } from "@/remotion/compiler"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import { StatusPill } from "@/components/ui/status-pill"
 import { cn } from "@/lib/utils"
 
 const Player = dynamic(
   () => import("@remotion/player").then((module) => module.Player),
   { ssr: false },
+)
+
+const PendingAssistantText = dynamic(
+  () =>
+    import("./pending-assistant-text").then((m) => m.PendingAssistantText),
+  {
+    ssr: false,
+    loading: () => (
+      <span className="text-sm text-white/40">Updating…</span>
+    ),
+  },
 )
 
 interface GraphicCardProps {
@@ -28,6 +40,9 @@ interface GraphicCardProps {
   onEditPrompt: (prompt: string) => void | Promise<void>
 }
 
+// Hoisted fallback component to avoid creating new references (fix #16)
+const NullComponent = () => null
+
 const TYPE_LABELS: Record<string, string> = {
   "lower-third": "Lower Third",
   "title-card": "Title Card",
@@ -36,41 +51,8 @@ const TYPE_LABELS: Record<string, string> = {
   "outro-card": "Outro Card",
 }
 
-const THINKING_WORDS = ["Assistant", "is", "revising", "this", "layer"]
 
-function PendingAssistantText() {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 text-white/72">
-      {THINKING_WORDS.map((word, index) => (
-        <motion.span
-          key={word}
-          animate={{ opacity: [0.28, 1, 0.28] }}
-          transition={{
-            duration: 1.45,
-            repeat: Number.POSITIVE_INFINITY,
-            ease: "easeInOut",
-            delay: index * 0.12,
-          }}
-        >
-          {word}
-        </motion.span>
-      ))}
-      <motion.span
-        className="inline-flex"
-        animate={{ opacity: [0.2, 1, 0.2] }}
-        transition={{
-          duration: 1.1,
-          repeat: Number.POSITIVE_INFINITY,
-          ease: "easeInOut",
-        }}
-      >
-        …
-      </motion.span>
-    </div>
-  )
-}
-
-export function GraphicCard({
+export const GraphicCard = React.memo(function GraphicCard({
   layer,
   fps,
   width,
@@ -117,45 +99,31 @@ export function GraphicCard({
   }, [isReady, layer.code, layer.error])
 
   const playerComponent = useMemo(
-    () => compilation.Component ?? (() => null),
+    () => compilation.Component ?? NullComponent,
     [compilation.Component],
   )
 
   const typeLabel = TYPE_LABELS[layer.type] ?? layer.type
 
   return (
-    <div className="flex flex-col gap-4 rounded-[1.75rem] border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+    <div className="flex flex-col gap-4 rounded-card border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-white/55">
               {typeLabel}
             </span>
-            <span
-              className={cn(
-                "rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em]",
-                layer.status === "ready" &&
-                  "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
-                layer.status === "generating" &&
-                  "border-blue-400/30 bg-blue-500/10 text-blue-200",
-                layer.status === "queued" &&
-                  "border-white/10 bg-white/[0.06] text-white/55",
-                layer.status === "failed" &&
-                  "border-red-400/30 bg-red-500/10 text-red-200",
-              )}
-            >
-              {layer.status}
-            </span>
+            <StatusPill status={layer.status} />
           </div>
           <p className="mt-1.5 text-sm leading-5 font-medium text-white/80">
             {layer.title}
           </p>
-          <p className="mt-1 text-xs text-white/38">
+          <p className="mt-1 text-xs text-white/50">
             {versionCount} local version{versionCount === 1 ? "" : "s"}
           </p>
         </div>
 
-        <span className="font-mono text-[10px] text-white/30">
+        <span className="font-mono text-[10px] text-white/50">
           {Math.round((layer.from / fps) * 10) / 10}s -{" "}
           {Math.round(((layer.from + layer.durationInFrames) / fps) * 10) / 10}s
         </span>
@@ -163,22 +131,39 @@ export function GraphicCard({
 
       <div className="overflow-hidden rounded-xl border border-white/8 bg-black/60">
         {compilation.Component ? (
-          <div className="aspect-video w-full">
-            <Player
-              acknowledgeRemotionLicense={true}
-              component={playerComponent}
-              durationInFrames={layer.durationInFrames}
-              fps={fps}
-              compositionWidth={width}
-              compositionHeight={height}
-              style={{ width: "100%", height: "100%" }}
-              controls
-              loop
-            />
-          </div>
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div className="flex aspect-video flex-col items-center justify-center gap-3 px-4 text-center">
+                <p className="font-mono text-xs text-red-400">
+                  This layer failed to render: {error.message}
+                </p>
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="rounded-lg border border-white/12 bg-white/[0.06] px-3 py-1 text-xs text-white/60 hover:bg-white/[0.1]"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          >
+            <div className="aspect-video w-full">
+              <Player
+                acknowledgeRemotionLicense={true}
+                component={playerComponent}
+                durationInFrames={layer.durationInFrames}
+                fps={fps}
+                compositionWidth={width}
+                compositionHeight={height}
+                style={{ width: "100%", height: "100%" }}
+                controls
+                loop
+              />
+            </div>
+          </ErrorBoundary>
         ) : (
           <div className="flex aspect-video items-center justify-center px-4 text-center">
-            <p className="font-mono text-xs text-white/35">
+            <p className="font-mono text-xs text-white/50">
               {layer.status === "queued" && "Waiting for generation to start."}
               {layer.status === "generating" &&
                 "Generating this motion graphic…"}
@@ -197,7 +182,7 @@ export function GraphicCard({
         </div>
       ) : null}
 
-      <div className="rounded-[1.25rem] border border-white/8 bg-black/35 p-3">
+      <div className="rounded-card-inner border border-white/8 bg-black/35 p-3">
         <div className="flex items-center justify-between gap-3">
           <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
             Layer chat
@@ -265,13 +250,13 @@ export function GraphicCard({
                 ? "Tighten the typography, change the entrance motion, simplify the color palette…"
                 : "Layer edits unlock after generation completes."
             }
-            className="min-h-[96px] rounded-xl border-white/10 bg-black/50 px-3 py-3 text-[13px] leading-6 text-white/80 placeholder:text-white/25"
+            className="min-h-[96px] rounded-xl border-white/10 bg-black/50 px-3 py-3 text-[13px] leading-6 text-white/80 placeholder:text-white/40"
           />
           <div className="flex justify-end">
             <Button
               type="button"
               size="sm"
-              onClick={() => void handleSubmitPrompt()}
+              onClick={handleSubmitPrompt}
               disabled={!prompt.trim() || !isReady || isEditPending}
               className="rounded-xl bg-white px-4 text-black hover:bg-zinc-200"
             >
@@ -297,7 +282,7 @@ export function GraphicCard({
           }}
           disabled={!isReady}
           className={cn(
-            "min-h-[160px] w-full resize-none rounded-xl border bg-black/50 px-3 py-3 font-mono text-[11px] leading-5 text-white/80 placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-white/15",
+            "min-h-[160px] w-full resize-none rounded-xl border bg-black/50 px-3 py-3 font-mono text-[11px] leading-5 text-white/80 placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-white/15",
             isDirty ? "border-white/20" : "border-white/10",
             !isReady && "opacity-55",
           )}
@@ -319,4 +304,4 @@ export function GraphicCard({
       ) : null}
     </div>
   );
-}
+})

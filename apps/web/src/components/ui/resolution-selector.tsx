@@ -81,6 +81,7 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
       {/* Free input row */}
       <div className="flex items-center gap-2">
         <input
+          aria-label="Width"
           type="number"
           value={widthInput}
           onChange={(e) => setWidthInput(e.target.value)}
@@ -90,6 +91,7 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
         />
         <span className="text-white/40">×</span>
         <input
+          aria-label="Height"
           type="number"
           value={heightInput}
           onChange={(e) => setHeightInput(e.target.value)}
@@ -97,8 +99,9 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
           placeholder="Height"
           className="w-20 rounded-lg border border-white/12 bg-black/40 px-2 py-1.5 text-center font-mono text-xs text-white focus:border-white/24 focus:outline-none"
         />
-        <span className="text-white/25 text-xs">or</span>
+        <span className="text-white/50 text-xs">or</span>
         <input
+          aria-label="Aspect ratio"
           type="text"
           value={aspectInput}
           onChange={(e) => setAspectInput(e.target.value)}
@@ -108,7 +111,7 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
         />
       </div>
 
-      <p className="text-[11px] text-white/30">
+      <p className="text-[11px] text-white/50">
         Current: {value.width}×{value.height}
       </p>
     </div>
