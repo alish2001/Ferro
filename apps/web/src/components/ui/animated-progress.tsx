@@ -42,7 +42,7 @@ export function AnimatedProgress({
       <motion.div
         className="absolute inset-0 opacity-60"
         animate={{ backgroundPositionX: ["0%", "200%"] }}
-        transition={{ duration: 2.2, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
         style={{
           backgroundImage:
             "linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.12), rgba(255,255,255,0.02))",
@@ -52,6 +52,7 @@ export function AnimatedProgress({
 
       {indeterminate ? (
         <motion.div
+          key="indeterminate"
           data-slot="progress-indicator"
           className={cn(
             "absolute inset-y-0 left-0 w-2/5 rounded-full bg-gradient-to-r",
@@ -60,7 +61,7 @@ export function AnimatedProgress({
           animate={{ x: ["-120%", "280%"] }}
           transition={{
             duration: 1.35,
-            repeat: Number.POSITIVE_INFINITY,
+            repeat: Infinity,
             ease: "easeInOut",
           }}
         >
@@ -68,21 +69,26 @@ export function AnimatedProgress({
         </motion.div>
       ) : (
         <motion.div
+          key="determinate"
           data-slot="progress-indicator"
           className={cn(
             "absolute inset-y-0 left-0 overflow-hidden rounded-full bg-gradient-to-r",
             toneClasses[tone],
           )}
-          initial={false}
+          initial={{ width: clamped >= 1 ? "100%" : "0%" }}
           animate={{ width: `${clamped * 100}%` }}
-          transition={{ type: "spring", stiffness: 130, damping: 26, mass: 0.75 }}
+          transition={
+            clamped >= 1
+              ? { duration: 0.35, ease: "easeOut" }
+              : { type: "spring", stiffness: 130, damping: 26, mass: 0.75 }
+          }
         >
           <motion.div
             className="absolute inset-0 opacity-80"
             animate={{ backgroundPositionX: ["0%", "200%"] }}
             transition={{
               duration: 1.8,
-              repeat: Number.POSITIVE_INFINITY,
+              repeat: Infinity,
               ease: "linear",
             }}
             style={{
