@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Pause, Play, RotateCcw } from "lucide-react";
 import type { StreamSimulator } from "../types";
@@ -21,34 +21,37 @@ export function StreamTransport<P>({
   const elapsedRef = useRef(0);
   const lastFrameRef = useRef(0);
   const rafRef = useRef<number>(0);
+  const tickRef = useRef<() => void>(undefined);
 
   const speed = SPEEDS[speedIndex];
 
-  const tick = useCallback(() => {
-    const now = performance.now();
-    const delta = now - lastFrameRef.current;
-    lastFrameRef.current = now;
-    elapsedRef.current = Math.min(
-      elapsedRef.current + delta * speed,
-      simulator.durationMs,
-    );
+  useEffect(() => {
+    tickRef.current = () => {
+      const now = performance.now();
+      const delta = now - lastFrameRef.current;
+      lastFrameRef.current = now;
+      elapsedRef.current = Math.min(
+        elapsedRef.current + delta * speed,
+        simulator.durationMs,
+      );
 
-    onPropsUpdate(simulator.getPropsAtTime(elapsedRef.current));
+      onPropsUpdate(simulator.getPropsAtTime(elapsedRef.current));
 
-    if (elapsedRef.current < simulator.durationMs) {
-      rafRef.current = requestAnimationFrame(tick);
-    } else {
-      setPlaying(false);
-    }
+      if (elapsedRef.current < simulator.durationMs) {
+        rafRef.current = requestAnimationFrame(() => tickRef.current?.());
+      } else {
+        setPlaying(false);
+      }
+    };
   }, [speed, simulator, onPropsUpdate]);
 
   useEffect(() => {
     if (playing) {
       lastFrameRef.current = performance.now();
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(() => tickRef.current?.());
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [playing, tick]);
+  }, [playing]);
 
   const handlePlayPause = () => {
     if (!playing && elapsedRef.current >= simulator.durationMs) {
