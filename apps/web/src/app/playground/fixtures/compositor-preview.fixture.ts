@@ -23,9 +23,9 @@ type CompositorPreviewProps = {
 };
 
 const LOWER_THIRD_CODE = `
-const { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } = window.Remotion;
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
-export default function LowerThird() {
+export const LowerThird = () => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const opacity = interpolate(frame, [0, 10, durationInFrames - 10, durationInFrames], [0, 1, 1, 0], {
@@ -46,9 +46,9 @@ export default function LowerThird() {
 `.trim();
 
 const TITLE_CARD_CODE = `
-const { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } = window.Remotion;
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
-export default function TitleCard() {
+export const TitleCard = () => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const opacity = interpolate(frame, [0, 15, durationInFrames - 15, durationInFrames], [0, 1, 1, 0], {
