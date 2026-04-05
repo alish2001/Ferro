@@ -24,3 +24,5 @@ dist/
 out/
 build/
 *.mov
+.superpowers/
+.worktrees/
