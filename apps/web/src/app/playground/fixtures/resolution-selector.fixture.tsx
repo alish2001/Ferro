@@ -33,8 +33,8 @@ export const resolutionSelectorFixture: ComponentFixture<ResolutionSelectorWrapp
       initialHeight: 1080,
     },
     states: {
-      portrait: { initialWidth: 1080, initialHeight: 1920 },
-      square: { initialWidth: 1080, initialHeight: 1080 },
-      "4k": { initialWidth: 3840, initialHeight: 2160 },
+      portrait: { description: "Portrait 1080x1920 orientation", props: { initialWidth: 1080, initialHeight: 1920 } },
+      square: { description: "Square 1080x1080 aspect ratio", props: { initialWidth: 1080, initialHeight: 1080 } },
+      "4k": { description: "4K UHD 3840x2160 resolution", props: { initialWidth: 3840, initialHeight: 2160 } },
     },
   };

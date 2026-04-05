@@ -41,7 +41,7 @@ export const cardFixture: ComponentFixture<CardDemoProps> = {
     showFooter: true,
   },
   states: {
-    small: { size: "sm" as const },
-    "no-footer": { showFooter: false },
+    small: { description: "Compact small-size card variant", props: { size: "sm" as const } },
+    "no-footer": { description: "Card without footer section", props: { showFooter: false } },
   },
 };

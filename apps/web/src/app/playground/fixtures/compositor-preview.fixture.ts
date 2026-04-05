@@ -121,13 +121,22 @@ export const compositorPreviewFixture: ComponentFixture<CompositorPreviewProps> 
     },
     states: {
       "single-layer": {
-        layers: [layerA],
+        description: "Single lower-third layer only",
+        props: {
+          layers: [layerA],
+        },
       },
       "multi-layer": {
-        layers: mockLayers,
+        description: "Two layers stacked: lower-third + title card",
+        props: {
+          layers: mockLayers,
+        },
       },
       "no-layers": {
-        layers: [],
+        description: "Empty composition with no layers",
+        props: {
+          layers: [],
+        },
       },
     },
   };

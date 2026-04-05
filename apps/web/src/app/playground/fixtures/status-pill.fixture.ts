@@ -12,9 +12,9 @@ export const statusPillFixture: ComponentFixture<StatusPillProps> = {
   component: StatusPill,
   defaultProps: { status: "ready" },
   states: {
-    ready: { status: "ready" },
-    generating: { status: "generating" },
-    queued: { status: "queued" },
-    failed: { status: "failed" },
+    ready: { description: "Ready state with green badge", props: { status: "ready" } },
+    generating: { description: "Generating state with animated indicator", props: { status: "generating" } },
+    queued: { description: "Queued state waiting to start", props: { status: "queued" } },
+    failed: { description: "Failed state with red badge", props: { status: "failed" } },
   },
 };

@@ -74,27 +74,39 @@ export const generationStatusFixture: ComponentFixture<GenerationStatusProps> =
     },
     states: {
       idle: {
-        jobState: idleState,
-        progress: null,
-        layerCounts: null,
+        description: "Idle before generation starts",
+        props: {
+          jobState: idleState,
+          progress: null,
+          layerCounts: null,
+        },
       },
       loading: {
-        jobState: loadingState,
-        progress: 0.45,
-        totalLayers: 6,
-        layerCounts: midCounts,
+        description: "Mid-generation: 2 ready, 1 generating, 3 queued at 45%",
+        props: {
+          jobState: loadingState,
+          progress: 0.45,
+          totalLayers: 6,
+          layerCounts: midCounts,
+        },
       },
       success: {
-        jobState: successState,
-        progress: 1,
-        totalLayers: 6,
-        layerCounts: doneCounts,
+        description: "All 4 layers complete at 100%",
+        props: {
+          jobState: successState,
+          progress: 1,
+          totalLayers: 6,
+          layerCounts: doneCounts,
+        },
       },
       error: {
-        jobState: errorState,
-        progress: 0.5,
-        totalLayers: 6,
-        layerCounts: failedCounts,
+        description: "Failed with 1 errored layer at 50% progress",
+        props: {
+          jobState: errorState,
+          progress: 0.5,
+          totalLayers: 6,
+          layerCounts: failedCounts,
+        },
       },
     },
     streamSimulator: {

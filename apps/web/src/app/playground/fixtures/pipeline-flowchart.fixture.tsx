@@ -391,20 +391,32 @@ export const pipelineFlowchartFixture: ComponentFixture<PipelineFlowchartProps> 
     },
     states: {
       "all-complete": {
-        traces: allCompleteTraces,
-        isRerunning: false,
+        description: "All 5 stages complete with token stats",
+        props: {
+          traces: allCompleteTraces,
+          isRerunning: false,
+        },
       },
       "mid-generation": {
-        traces: midGenTraces,
-        isRerunning: false,
+        description: "3 complete, 1 running title-card, 1 pending stat-callout",
+        props: {
+          traces: midGenTraces,
+          isRerunning: false,
+        },
       },
       failed: {
-        traces: failedTraces,
-        isRerunning: false,
+        description: "Planning stage failed with malformed JSON after 3 retries",
+        props: {
+          traces: failedTraces,
+          isRerunning: false,
+        },
       },
       rerunning: {
-        traces: allCompleteTraces,
-        isRerunning: true,
+        description: "Re-run in progress on a fully complete pipeline",
+        props: {
+          traces: allCompleteTraces,
+          isRerunning: true,
+        },
       },
     },
     streamSimulator: {

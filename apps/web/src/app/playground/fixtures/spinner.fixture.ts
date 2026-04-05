@@ -14,7 +14,7 @@ export const spinnerFixture: ComponentFixture<SpinnerProps> = {
     className: "",
   },
   states: {
-    large: { className: "h-8 w-8" },
-    "text-color": { className: "text-blue-400" },
+    large: { description: "Larger 32px spinner", props: { className: "h-8 w-8" } },
+    "text-color": { description: "Custom blue color override", props: { className: "text-blue-400" } },
   },
 };

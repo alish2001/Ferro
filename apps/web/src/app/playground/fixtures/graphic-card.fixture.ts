@@ -142,29 +142,44 @@ export const graphicCardFixture: ComponentFixture<GraphicCardProps> = {
   },
   states: {
     ready: {
-      layer: mockLayer,
-      messages: mockMessages,
-      versionCount: 2,
+      description: "Ready layer with code and 2 chat messages",
+      props: {
+        layer: mockLayer,
+        messages: mockMessages,
+        versionCount: 2,
+      },
     },
     generating: {
-      layer: generatingLayer,
-      messages: [],
-      versionCount: 0,
+      description: "Layer currently generating with no code yet",
+      props: {
+        layer: generatingLayer,
+        messages: [],
+        versionCount: 0,
+      },
     },
     failed: {
-      layer: failedLayer,
-      messages: [],
-      versionCount: 0,
+      description: "Failed layer with JSX parse error",
+      props: {
+        layer: failedLayer,
+        messages: [],
+        versionCount: 0,
+      },
     },
     "with-chat": {
-      layer: mockLayer,
-      messages: mockMessages,
-      versionCount: 2,
+      description: "Ready layer with edit conversation history",
+      props: {
+        layer: mockLayer,
+        messages: mockMessages,
+        versionCount: 2,
+      },
     },
     "no-chat": {
-      layer: mockLayer,
-      messages: [],
-      versionCount: 1,
+      description: "Ready layer with no chat messages, single version",
+      props: {
+        layer: mockLayer,
+        messages: [],
+        versionCount: 1,
+      },
     },
   },
 };

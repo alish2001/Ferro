@@ -24,10 +24,13 @@ export const fieldCardFixture: ComponentFixture<FieldCardProps> = {
     onChange: (() => {}) as any,
   },
   states: {
-    empty: { value: "" },
+    empty: { description: "Empty field showing placeholder text", props: { value: "" } },
     long: {
-      value:
-        "Bold typography with neon accents on dark background. Heavy use of contrast between light and shadow. Geometric shapes, grid systems, and monospace elements. Brutalist layout with purposeful asymmetry.",
+      description: "Long multi-sentence value that wraps",
+      props: {
+        value:
+          "Bold typography with neon accents on dark background. Heavy use of contrast between light and shadow. Geometric shapes, grid systems, and monospace elements. Brutalist layout with purposeful asymmetry.",
+      },
     },
   },
 };

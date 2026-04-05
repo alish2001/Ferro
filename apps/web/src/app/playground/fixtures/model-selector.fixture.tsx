@@ -25,7 +25,7 @@ export const modelSelectorFixture: ComponentFixture<ModelSelectorWrapperProps> =
       initialModel: "openai:gpt-4o",
     },
     states: {
-      "gpt-4o-mini": { initialModel: "openai:gpt-4o-mini" },
-      claude: { initialModel: "anthropic:claude-sonnet-4-6" },
+      "gpt-4o-mini": { description: "OpenAI GPT-4o Mini selected", props: { initialModel: "openai:gpt-4o-mini" } },
+      claude: { description: "Anthropic Claude Sonnet selected", props: { initialModel: "anthropic:claude-sonnet-4-6" } },
     },
   };

@@ -19,11 +19,11 @@ export const animatedProgressFixture: ComponentFixture<AnimatedProgressProps> = 
   component: AnimatedProgress,
   defaultProps: { value: 0.65, tone: "loading" as const, indeterminate: false },
   states: {
-    idle: { value: 0, tone: "idle" as const },
-    loading: { value: 0.65, tone: "loading" as const },
-    success: { value: 1, tone: "success" as const },
-    error: { value: 0.3, tone: "error" as const },
-    indeterminate: { indeterminate: true, tone: "loading" as const },
+    idle: { description: "Idle tone at 0% progress", props: { value: 0, tone: "idle" as const } },
+    loading: { description: "Loading tone at 65% progress", props: { value: 0.65, tone: "loading" as const } },
+    success: { description: "Success tone at 100% complete", props: { value: 1, tone: "success" as const } },
+    error: { description: "Error tone with red bar at 30%", props: { value: 0.3, tone: "error" as const } },
+    indeterminate: { description: "Indeterminate shimmer with no value", props: { indeterminate: true, tone: "loading" as const } },
   },
   streamSimulator: {
     durationMs: 5000,

@@ -205,20 +205,32 @@ export const stageDetailFixture: ComponentFixture<StageDetailProps> = {
   },
   states: {
     complete: {
-      trace: completeTrace,
-      isRerunning: false,
+      description: "Completed stat-callout with prompts, output, and token usage",
+      props: {
+        trace: completeTrace,
+        isRerunning: false,
+      },
     },
     running: {
-      trace: runningTrace,
-      isRerunning: false,
+      description: "Currently running with prompts visible but no output yet",
+      props: {
+        trace: runningTrace,
+        isRerunning: false,
+      },
     },
     failed: {
-      trace: failedTrace,
-      isRerunning: false,
+      description: "Failed with truncated output error after 420ms",
+      props: {
+        trace: failedTrace,
+        isRerunning: false,
+      },
     },
     rerunning: {
-      trace: rerunningTrace,
-      isRerunning: true,
+      description: "Re-run spinner on a previously completed stage",
+      props: {
+        trace: rerunningTrace,
+        isRerunning: true,
+      },
     },
   },
 };
