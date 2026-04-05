@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import type {
   FerroGenerationSession,
@@ -120,6 +120,11 @@ function getGenerationProgress(
     return session.skills.length > 0 ? 0.2 : 0.08
   }
 
+  // If all layers finished (ready or failed), show 100% even before job-completed event
+  if (counts.generating === 0 && counts.queued === 0 && session.layers.length > 0) {
+    return 1
+  }
+
   const weightedLayerProgress =
     (counts.ready + counts.generating * 0.52 + counts.failed * 0.2) /
     session.layers.length
@@ -225,15 +230,8 @@ export function useGenerationSession() {
 
     const savedSession = debouncedSave(nextSession, flush) ?? nextSession
     sessionRef.current = savedSession
-    if (flush) {
-      setCurrentSession(savedSession)
-      refreshRecentSessions()
-    } else {
-      // Use startTransition for streaming updates to prevent UI flickering
-      startTransition(() => {
-        setCurrentSession(savedSession)
-      })
-    }
+    setCurrentSession(savedSession)
+    if (flush) refreshRecentSessions()
   }
 
   const updateSession: UpdateSessionFn = (mutator) => {
