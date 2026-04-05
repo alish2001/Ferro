@@ -1,25 +1,45 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useCallback, useState } from "react"
 import type { DevModeStageTrace } from "@/lib/ferro-contracts"
 import { Button } from "@/components/ui/button"
 
-function TokenBadge({ label, value }: { label: string; value: number }) {
-  if (value === 0) return null
-  return (
-    <span className="rounded bg-white/[0.06] px-2 py-0.5 tabular-nums text-[11px] text-white/50">
-      {label}: {value.toLocaleString()}
-    </span>
-  )
+const MonacoEditor = dynamic(
+  () => import("@monaco-editor/react").then((m) => m.default),
+  { ssr: false },
+)
+
+function detectLanguage(stageId: string, label: string): string {
+  if (label === "Output") {
+    // Layer gen output is TSX, plan output is JSON
+    if (stageId.startsWith("layer-gen-")) return "typescript"
+    return "json"
+  }
+  // System/user prompts are markdown-ish
+  return "markdown"
 }
 
-function PromptBlock({
+function formatContent(content: string, language: string): string {
+  if (language === "json") {
+    try {
+      return JSON.stringify(JSON.parse(content), null, 2)
+    } catch {
+      return content
+    }
+  }
+  return content
+}
+
+function CodeBlock({
+  stageId,
   label,
   content,
   isEditing,
   editValue,
   onEditChange,
 }: {
+  stageId: string
   label: string
   content: string | null
   isEditing: boolean
@@ -28,30 +48,65 @@ function PromptBlock({
 }) {
   if (!content && !isEditing) return null
 
-  const textareaId = `prompt-${label.toLowerCase().replace(/\s+/g, "-")}`
+  const language = detectLanguage(stageId, label)
+  const displayContent = content ? formatContent(content, language) : ""
+  const lineCount = (isEditing ? editValue : displayContent).split("\n").length
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <label
-        htmlFor={isEditing ? textareaId : undefined}
-        className="text-[11px] font-medium uppercase tracking-wider text-white/40"
-      >
+      <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">
         {label}
       </label>
-      {isEditing ? (
-        <textarea
-          id={textareaId}
-          value={editValue}
-          onChange={(e) => onEditChange(e.target.value)}
-          className="h-48 w-full resize-y rounded-lg border border-white/10 bg-black/60 p-3 font-mono text-[12px] leading-5 text-white/80 focus-visible:border-white/25 focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:outline-none"
-          spellCheck={false}
+      <div
+        className="overflow-hidden rounded-lg border border-white/[0.06]"
+        style={{ height: Math.min(Math.max(lineCount * 19 + 16, 120), 400) }}
+      >
+        <MonacoEditor
+          value={isEditing ? editValue : displayContent}
+          language={language}
+          onChange={(value) => {
+            if (isEditing && value != null) onEditChange(value)
+          }}
+          theme="vs-dark"
+          options={{
+            readOnly: !isEditing,
+            minimap: { enabled: false },
+            wordWrap: "on",
+            lineNumbers: "off",
+            folding: false,
+            scrollBeyondLastLine: false,
+            fontSize: 12,
+            lineHeight: 19,
+            padding: { top: 8, bottom: 8 },
+            renderLineHighlight: "none",
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            overviewRulerBorder: false,
+            scrollbar: {
+              vertical: "auto",
+              horizontal: "hidden",
+              verticalScrollbarSize: 6,
+            },
+            domReadOnly: !isEditing,
+            contextmenu: false,
+            quickSuggestions: false,
+            suggestOnTriggerCharacters: false,
+            parameterHints: { enabled: false },
+            tabCompletion: "off",
+            guides: { indentation: false },
+          }}
         />
-      ) : (
-        <pre className="max-h-64 min-w-0 overflow-auto rounded-lg border border-white/[0.06] bg-black/40 p-3 font-mono text-[12px] leading-5 text-white/70">
-          {content}
-        </pre>
-      )}
+      </div>
     </div>
+  )
+}
+
+function TokenBadge({ label, value }: { label: string; value: number }) {
+  if (value === 0) return null
+  return (
+    <span className="rounded bg-white/[0.06] px-2 py-0.5 tabular-nums text-[11px] text-white/50">
+      {label}: {value.toLocaleString()}
+    </span>
   )
 }
 
@@ -116,14 +171,16 @@ export function StageDetail({ trace, onRerun, isRerunning }: StageDetailProps) {
 
       {/* Prompts */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <PromptBlock
+        <CodeBlock
+          stageId={trace.stageId}
           label="System Prompt"
           content={trace.systemPrompt}
           isEditing={isEditing}
           editValue={editSystemPrompt}
           onEditChange={setEditSystemPrompt}
         />
-        <PromptBlock
+        <CodeBlock
+          stageId={trace.stageId}
           label="User Prompt"
           content={trace.userPrompt}
           isEditing={isEditing}
@@ -134,14 +191,14 @@ export function StageDetail({ trace, onRerun, isRerunning }: StageDetailProps) {
 
       {/* Output */}
       {trace.rawOutput ? (
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">
-            Output
-          </span>
-          <pre className="max-h-64 min-w-0 overflow-auto rounded-lg border border-white/[0.06] bg-black/40 p-3 font-mono text-[12px] leading-5 text-white/70">
-            {trace.rawOutput}
-          </pre>
-        </div>
+        <CodeBlock
+          stageId={trace.stageId}
+          label="Output"
+          content={trace.rawOutput}
+          isEditing={false}
+          editValue=""
+          onEditChange={() => {}}
+        />
       ) : null}
 
       {/* Error */}
