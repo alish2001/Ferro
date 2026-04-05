@@ -19,5 +19,11 @@
     "typecheck": "bun run typecheck:web && bun run typecheck:render",
     "typecheck:web": "bun run --cwd apps/web typecheck",
     "typecheck:render": "bun run --cwd packages/render-core typecheck"
+  },
+  "devDependencies": {
+    "shadcn": "^4.1.2"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0"
   }
 }

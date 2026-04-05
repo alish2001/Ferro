@@ -165,6 +165,7 @@ export function GraphicCard({
         {compilation.Component ? (
           <div className="aspect-video w-full">
             <Player
+              acknowledgeRemotionLicense={true}
               component={playerComponent}
               durationInFrames={layer.durationInFrames}
               fps={fps}
@@ -179,7 +180,8 @@ export function GraphicCard({
           <div className="flex aspect-video items-center justify-center px-4 text-center">
             <p className="font-mono text-xs text-white/35">
               {layer.status === "queued" && "Waiting for generation to start."}
-              {layer.status === "generating" && "Generating this motion graphic…"}
+              {layer.status === "generating" &&
+                "Generating this motion graphic…"}
               {layer.status === "failed" &&
                 (layer.error ?? "This layer failed to generate.")}
               {!["queued", "generating", "failed"].includes(layer.status) &&
@@ -235,7 +237,8 @@ export function GraphicCard({
                   {message.role}
                 </p>
                 <div className="mt-1 whitespace-pre-wrap">
-                  {message.role === "assistant" && message.status === "pending" ? (
+                  {message.role === "assistant" &&
+                  message.status === "pending" ? (
                     <PendingAssistantText />
                   ) : (
                     <p>{message.text}</p>
@@ -245,8 +248,8 @@ export function GraphicCard({
             ))
           ) : (
             <p className="rounded-xl border border-dashed border-white/8 bg-white/[0.02] px-3 py-3 text-sm text-white/45">
-              No follow-up edits yet. Ask for a revision and the latest code will
-              replace this layer in place.
+              No follow-up edits yet. Ask for a revision and the latest code
+              will replace this layer in place.
             </p>
           )}
         </div>
@@ -289,8 +292,8 @@ export function GraphicCard({
         <textarea
           value={editCode}
           onChange={(event) => {
-            setEditCode(event.target.value)
-            setIsDirty(true)
+            setEditCode(event.target.value);
+            setIsDirty(true);
           }}
           disabled={!isReady}
           className={cn(
@@ -315,5 +318,5 @@ export function GraphicCard({
         </Button>
       ) : null}
     </div>
-  )
+  );
 }

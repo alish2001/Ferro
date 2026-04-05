@@ -1,22 +1,21 @@
-"use client"
+"use client";
 
-import type { FerroLayer } from "@/lib/ferro-contracts"
-import { createBrowserCompositeComponent } from "@/remotion/browser-composite"
-import dynamic from "next/dynamic"
-import React, { useMemo } from "react"
+import type { FerroLayer } from "@/lib/ferro-contracts";
+import { createBrowserCompositeComponent } from "@/remotion/browser-composite";
+import dynamic from "next/dynamic";
+import React, { useMemo } from "react";
 
-const Player = dynamic(
-  () => import("@remotion/player").then((m) => m.Player),
-  { ssr: false },
-)
+const Player = dynamic(() => import("@remotion/player").then((m) => m.Player), {
+  ssr: false,
+});
 
 interface CompositorPreviewProps {
-  videoObjectUrl: string | null
-  layers: FerroLayer[]
-  fps: number
-  width: number
-  height: number
-  durationInFrames: number
+  videoObjectUrl: string | null;
+  layers: FerroLayer[];
+  fps: number;
+  width: number;
+  height: number;
+  durationInFrames: number;
 }
 
 export function CompositorPreview({
@@ -31,8 +30,8 @@ export function CompositorPreview({
     return createBrowserCompositeComponent({
       layers,
       videoSrc: videoObjectUrl,
-    })
-  }, [layers, videoObjectUrl])
+    });
+  }, [layers, videoObjectUrl]);
 
   return (
     <div className="overflow-hidden rounded-[1.75rem] border border-white/12 bg-black/60 shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
@@ -41,13 +40,15 @@ export function CompositorPreview({
           Compositor preview
         </p>
         <p className="mt-1 text-xs text-white/35">
-          All {layers.length} layer{layers.length !== 1 ? "s" : ""} composited over video · {width}×{height} · {fps}fps
+          All {layers.length} layer{layers.length !== 1 ? "s" : ""} composited
+          over video · {width}×{height} · {fps}fps
         </p>
       </div>
 
       <div className="px-5 pb-5">
         <div className="overflow-hidden rounded-xl border border-white/8">
           <Player
+            acknowledgeRemotionLicense={true}
             component={CompositeComponent}
             durationInFrames={Math.max(durationInFrames, 1)}
             fps={fps}
@@ -60,5 +61,5 @@ export function CompositorPreview({
         </div>
       </div>
     </div>
-  )
+  );
 }
