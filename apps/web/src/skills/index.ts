@@ -16,19 +16,23 @@ const GUIDANCE_SKILLS = [
 export const SKILL_NAMES = [...GUIDANCE_SKILLS] as const
 export type SkillName = (typeof SKILL_NAMES)[number]
 
-// Read markdown files at request time (server-side only, called from API routes)
-function readSkillFile(skillName: SkillName): string {
+// Read all skill markdown files once at module load (server-side only).
+// These files are static assets that never change at runtime, so there is
+// no reason to hit the filesystem on every generation request.
+const skillCache = new Map<SkillName, string>()
+
+for (const skillName of SKILL_NAMES) {
   const filePath = path.join(process.cwd(), "src", "skills", `${skillName}.md`)
   try {
-    return fs.readFileSync(filePath, "utf-8")
+    skillCache.set(skillName, fs.readFileSync(filePath, "utf-8"))
   } catch {
     console.warn(`Could not read skill file: ${filePath}`)
-    return ""
+    skillCache.set(skillName, "")
   }
 }
 
 export function getSkillContent(skillName: SkillName): string {
-  return readSkillFile(skillName)
+  return skillCache.get(skillName) ?? ""
 }
 
 export function getCombinedSkillContent(skills: SkillName[]): string {

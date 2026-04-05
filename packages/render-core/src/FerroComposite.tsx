@@ -4,6 +4,7 @@ import { compileCode } from "./compiler"
 
 export interface FerroCompositeProps {
   layers: Array<{
+    id: string
     code: string
     type: string
     from: number
@@ -20,6 +21,7 @@ export const FerroComposite: React.FC = () => {
   const { layers, videoSrc } = getInputProps() as unknown as FerroCompositeProps
 
   const compiled = layers.map((layer) => ({
+    id: layer.id,
     Component: compileCode(layer.code).Component,
     from: layer.from,
     durationInFrames: layer.durationInFrames,
@@ -33,9 +35,9 @@ export const FerroComposite: React.FC = () => {
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       )}
-      {compiled.map(({ Component, from, durationInFrames }, i) =>
+      {compiled.map(({ id, Component, from, durationInFrames }) =>
         Component ? (
-          <Sequence key={i} from={from} durationInFrames={durationInFrames}>
+          <Sequence key={id} from={from} durationInFrames={durationInFrames}>
             <Component />
           </Sequence>
         ) : null,

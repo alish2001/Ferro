@@ -1504,6 +1504,7 @@ export default function Home() {
                 placeholder="Paste a transcript here, or upload a video and click Transcribe to auto-generate one with timestamps."
                 icon={Captions}
                 iconClassName="text-white"
+                maxLength={12000}
                 value={transcriptText}
                 onChange={(e) => setTranscriptText(e.target.value)}
                 action={
