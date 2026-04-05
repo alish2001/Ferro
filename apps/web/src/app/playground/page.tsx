@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+"use client";
+
 import { PlaygroundProvider } from "./playground-provider";
 import { PlaygroundCanvas } from "./components/playground-canvas";
 import { CommandPalette } from "./components/command-palette";
@@ -6,7 +7,7 @@ import { fixtures } from "./registry";
 
 export default function PlaygroundPage() {
   if (process.env.NODE_ENV !== "development") {
-    redirect("/");
+    return null;
   }
 
   return (
