@@ -238,11 +238,8 @@ export default function Home() {
   const [transcribeStatus, setTranscribeStatus] = useState<string | null>(null)
   const [includeCaptionLayer, setIncludeCaptionLayer] = useState(false)
 
-  // Dev mode state
-  const [devMode, setDevMode] = useState(() => {
-    if (typeof window === "undefined") return false
-    return localStorage.getItem("ferro-dev-mode") === "1"
-  })
+  // Dev mode state — read from localStorage after mount to avoid hydration mismatch
+  const [devMode, setDevMode] = useState(false)
   const [stageTraces, setStageTraces] = useState<Map<string, DevModeStageTrace>>(new Map())
   const [isRerunning, setIsRerunning] = useState(false)
 
@@ -362,6 +359,11 @@ export default function Home() {
         : false
       if (!hasFiles) return
       event.preventDefault()
+    }
+
+    // Restore dev mode toggle from localStorage (deferred to avoid hydration mismatch)
+    if (localStorage.getItem("ferro-dev-mode") === "1") {
+      setDevMode(true)
     }
 
     const interruptedSessions = markRunningSessionsInterrupted()

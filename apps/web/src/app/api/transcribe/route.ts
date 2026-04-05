@@ -17,10 +17,8 @@ export type TranscribeStreamEvent =
   | { type: "captions"; captions: Caption[] }
   | { type: "error"; error: string }
 
-// Next.js App Router: disable body size limit for video uploads
-export const config = {
-  api: { bodyParser: false },
-}
+// Next.js App Router: allow large video uploads (up to 500MB)
+export const maxDuration = 300
 
 export async function POST(request: Request) {
   const formData = await request.formData()
