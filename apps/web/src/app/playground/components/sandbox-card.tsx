@@ -12,6 +12,7 @@ import type { ComponentFixture } from "../types";
 interface SandboxCardContext {
   fixture: ComponentFixture<any>;
   instanceId: string;
+  selectedState: string;
   resolvedProps: Record<string, unknown>;
   streamOverrides: Record<string, unknown>;
   setStreamOverrides: (overrides: Record<string, unknown>) => void;
@@ -100,7 +101,7 @@ function CloseButton() {
 }
 
 function Body() {
-  const { fixture, resolvedProps } = useSandboxCard();
+  const { fixture, selectedState, resolvedProps } = useSandboxCard();
   const Component = fixture.component;
 
   return (
@@ -119,7 +120,7 @@ function Body() {
           </div>
         )}
       >
-        <Component {...(resolvedProps as any)} />
+        <Component key={selectedState} {...(resolvedProps as any)} />
       </ErrorBoundary>
     </CardContent>
   );
@@ -148,11 +149,12 @@ export function SandboxCard({
     () => ({
       fixture,
       instanceId,
+      selectedState,
       resolvedProps,
       streamOverrides,
       setStreamOverrides,
     }),
-    [fixture, instanceId, resolvedProps, streamOverrides],
+    [fixture, instanceId, selectedState, resolvedProps, streamOverrides],
   );
 
   return (
