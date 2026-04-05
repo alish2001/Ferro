@@ -96,6 +96,8 @@ export const FerroGenerateRequestSchema = z.object({
   captions: z.array(FerroCaptionSchema).optional(),
   // Whether to include a TikTok-style animated caption overlay layer
   includeCaptionLayer: z.boolean().optional(),
+  // When true, the pipeline emits debug-stage-update events with full prompt/output/usage data
+  devMode: z.boolean().optional(),
 })
 
 export type FerroGenerateRequest = z.infer<typeof FerroGenerateRequestSchema>
@@ -164,6 +166,29 @@ export type FerroGenerationSessionIndexItem = z.infer<
   typeof FerroGenerationSessionIndexItemSchema
 >
 
+export interface DevModeTokenUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}
+
+export interface DevModeStageTrace {
+  stageId: string
+  stageName: string
+  status: "pending" | "running" | "complete" | "failed"
+  systemPrompt: string | null
+  userPrompt: string | null
+  rawOutput: string | null
+  modelId: string | null
+  startedAt: string | null
+  completedAt: string | null
+  durationMs: number | null
+  tokenUsage: DevModeTokenUsage | null
+  finishReason: string | null
+  error: string | null
+}
+
 export type FerroGenerateStreamEvent =
   | {
       type: "job-started"
@@ -213,6 +238,11 @@ export type FerroGenerateStreamEvent =
       generationId: string
       error: string
       completedAt: string
+    }
+  | {
+      type: "debug-stage-update"
+      generationId: string
+      trace: DevModeStageTrace
     }
 
 export const FerroLayerEditRequestSchema = z.object({
@@ -277,3 +307,19 @@ export interface FerroRenderJobResponse extends FerroRenderJobAcceptedResponse {
   error: string | null
   downloadUrl: string | null
 }
+
+export const FerroDevRerunRequestSchema = z.object({
+  generationId: z.string(),
+  stageId: z.string(),
+  systemPromptOverride: z.string().optional(),
+  userPromptOverride: z.string().optional(),
+  cascade: z.boolean().default(false),
+  previousContext: z.object({
+    request: FerroGenerateRequestSchema,
+    skills: z.array(z.string()).optional(),
+    plan: z.any().optional(),
+    systemPrompt: z.string().optional(),
+  }),
+})
+
+export type FerroDevRerunRequest = z.infer<typeof FerroDevRerunRequestSchema>
