@@ -14,6 +14,7 @@ import {
   WandSparkles,
 } from "lucide-react"
 
+import { PipelineFlowchart } from "@/components/dev-mode/pipeline-flowchart"
 import { CompositorPreview } from "@/components/preview/CompositorPreview"
 import { GraphicCard } from "@/components/preview/GraphicCard"
 import { AnimatedProgress } from "@/components/ui/animated-progress"
@@ -31,6 +32,7 @@ import {
 } from "@/components/upload/generation-status"
 import { getVideoMeta } from "@/helpers/video-meta"
 import type {
+  DevModeStageTrace,
   FerroCaption,
   FerroGenerateRequest,
   FerroGenerateStreamEvent,
@@ -235,6 +237,11 @@ export default function Home() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [transcribeStatus, setTranscribeStatus] = useState<string | null>(null)
   const [includeCaptionLayer, setIncludeCaptionLayer] = useState(false)
+
+  // Dev mode state
+  const [devMode, setDevMode] = useState(false)
+  const [stageTraces, setStageTraces] = useState<Map<string, DevModeStageTrace>>(new Map())
+  const [isRerunning, setIsRerunning] = useState(false)
 
   const formVideoInputRef = useRef<HTMLInputElement>(null)
   const previewVideoInputRef = useRef<HTMLInputElement>(null)
@@ -679,6 +686,7 @@ export default function Home() {
     commitSession(null)
     setStep("form")
     resetRenderState()
+    setStageTraces(new Map())
     setFallbackJobState({
       tone: "loading",
       title: "Generating graphics…",
@@ -712,6 +720,7 @@ export default function Home() {
       sourceVideoName: videoFile?.name ?? null,
       captions: captions ?? undefined,
       includeCaptionLayer: includeCaptionLayer || undefined,
+      devMode: devMode || undefined,
     }
 
     try {
@@ -838,6 +847,14 @@ export default function Home() {
             }))
             break
           }
+          case "debug-stage-update": {
+            setStageTraces((prev) => {
+              const next = new Map(prev)
+              next.set(streamEvent.trace.stageId, streamEvent.trace)
+              return next
+            })
+            break
+          }
         }
       })
     } catch (error) {
@@ -854,6 +871,102 @@ export default function Home() {
         title: "Generation failed",
         detail: error instanceof Error ? error.message : "Something went wrong.",
       })
+    }
+  }
+
+  async function handleRerunStage(
+    stageId: string,
+    overrides: { systemPrompt?: string; userPrompt?: string },
+    cascade: boolean,
+  ) {
+    if (!currentSession) return
+
+    setIsRerunning(true)
+
+    try {
+      const res = await fetch("/api/generate/rerun", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generationId: currentSession.id,
+          stageId,
+          systemPromptOverride: overrides.systemPrompt,
+          userPromptOverride: overrides.userPrompt,
+          cascade,
+          previousContext: {
+            request: currentSession.request,
+            skills: currentSession.skills,
+            systemPrompt: stageTraces.get("system-prompt-build")?.rawOutput ?? undefined,
+          },
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }))
+        throw new Error(err.error ?? `HTTP ${res.status}`)
+      }
+
+      await readNdjsonStream<FerroGenerateStreamEvent>(res, async (event) => {
+        switch (event.type) {
+          case "debug-stage-update": {
+            setStageTraces((prev) => {
+              const next = new Map(prev)
+              next.set(event.trace.stageId, event.trace)
+              return next
+            })
+            break
+          }
+          case "skills-ready": {
+            updateSession((session) => ({
+              ...session,
+              skills: event.skills,
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "plan-ready": {
+            updateSession((session) => ({
+              ...session,
+              layers: event.layers,
+              fps: event.fps,
+              width: event.width,
+              height: event.height,
+              durationInFrames: event.durationInFrames,
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "layer-completed": {
+            updateSession((session) => ({
+              ...session,
+              layers: session.layers.map((l) =>
+                l.id === event.layer.id ? event.layer : l,
+              ),
+              versions: [...session.versions, event.version],
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          case "layer-failed": {
+            updateSession((session) => ({
+              ...session,
+              layers: session.layers.map((l) =>
+                l.id === event.layerId
+                  ? { ...l, status: "failed" as const, error: event.error }
+                  : l,
+              ),
+              updatedAt: new Date().toISOString(),
+            }))
+            break
+          }
+          default:
+            break
+        }
+      })
+    } catch (error) {
+      console.error("Rerun failed:", error)
+    } finally {
+      setIsRerunning(false)
     }
   }
 
@@ -1154,6 +1267,16 @@ export default function Home() {
               ))}
             </div>
           </div>
+
+          {devMode && stageTraces.size > 0 && (
+            <div className="mb-8">
+              <PipelineFlowchart
+                traces={stageTraces}
+                onRerunStage={handleRerunStage}
+                isRerunning={isRerunning}
+              />
+            </div>
+          )}
 
           {needsVideoReattach ? (
             <div className="mb-8 rounded-[1.5rem] border border-amber-400/20 bg-amber-500/10 px-5 py-4">
@@ -1718,11 +1841,30 @@ export default function Home() {
                 </div>
               ) : null}
 
-              <ModelSelector
-                value={selectedModel}
-                onChange={setSelectedModel}
-                className="w-full"
-              />
+              <div className="flex items-center gap-4">
+                <ModelSelector
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  className="flex-1"
+                />
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50 transition-colors hover:border-white/15 hover:text-white/70">
+                  <input
+                    type="checkbox"
+                    checked={devMode}
+                    onChange={(e) => setDevMode(e.target.checked)}
+                    className="rounded border-white/20 accent-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
+                  />
+                  Dev Mode
+                </label>
+              </div>
+
+              {devMode && stageTraces.size > 0 && (
+                <PipelineFlowchart
+                  traces={stageTraces}
+                  onRerunStage={handleRerunStage}
+                  isRerunning={isRerunning}
+                />
+              )}
 
               <Button
                 type="submit"

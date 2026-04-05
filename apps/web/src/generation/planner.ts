@@ -2,7 +2,7 @@ import { generateText, Output } from "ai"
 import type { LanguageModel } from "ai"
 import { z } from "zod"
 
-import type { FerroCaption } from "@/lib/ferro-contracts"
+import type { FerroCaption, DevModeTokenUsage } from "@/lib/ferro-contracts"
 
 export const GraphicLayerTypeSchema = z.enum([
   "lower-third",
@@ -40,7 +40,7 @@ export const GraphicPlanSchema = z.object({
 
 export type GraphicPlan = z.infer<typeof GraphicPlanSchema>
 
-const PLANNER_SYSTEM_PROMPT = `You are a motion graphics director for video productions.
+export const PLANNER_SYSTEM_PROMPT = `You are a motion graphics director for video productions.
 
 Given a video brief (taste/style, timestamped transcript, and optional instructions), plan the overlay graphics: what they show and exactly when they appear.
 
@@ -91,18 +91,37 @@ export interface PlanBrief {
   includeCaptionLayer?: boolean
 }
 
+export interface PlanGraphicsTrace {
+  plan: GraphicPlan
+  systemPrompt: string
+  userPrompt: string
+  rawOutput: string
+  usage: DevModeTokenUsage
+  finishReason: string
+  modelId: string
+}
 
-export async function planGraphics(
-  brief: PlanBrief,
-  model: LanguageModel,
-): Promise<GraphicPlan> {
+function extractUsage(usage: Record<string, unknown>): DevModeTokenUsage {
+  const u = usage as {
+    promptTokens?: number
+    completionTokens?: number
+    cachedInputTokens?: number
+  }
+  return {
+    inputTokens: u.promptTokens ?? 0,
+    outputTokens: u.completionTokens ?? 0,
+    cacheReadTokens: u.cachedInputTokens ?? 0,
+    cacheWriteTokens: 0,
+  }
+}
+
+function buildPlannerPrompt(brief: PlanBrief): string {
   const fps = brief.videoFps ?? 30
   const videoDuration = brief.videoDurationSeconds
     ? `\nVideo duration: ${brief.videoDurationSeconds.toFixed(1)} seconds`
     : ""
   const fpsLine = `\nFPS: ${fps}`
 
-  // Pre-compute frame numbers so the LLM reads them directly — no math required
   const transcriptSection =
     brief.captions && brief.captions.length > 0
       ? `WORD-LEVEL CAPTIONS (each word has fromFrame and toFrame already computed at ${fps}fps):\n${JSON.stringify(
@@ -118,12 +137,29 @@ export async function planGraphics(
     ? "\nINCLUDE_CAPTION_LAYER: true — Add one 'captions' layer starting at frame 0 spanning the full video."
     : ""
 
-  const prompt = `TASTE/STYLE: ${brief.taste || "No style preference specified"}
+  return `TASTE/STYLE: ${brief.taste || "No style preference specified"}
 
 ${transcriptSection}
 
 INSTRUCTIONS: ${brief.instructions || "No specific instructions — use taste and transcript to decide"}
 ${videoDuration}${fpsLine}${captionLayerLine}`
+}
+
+export async function planGraphics(
+  brief: PlanBrief,
+  model: LanguageModel,
+): Promise<GraphicPlan>
+export async function planGraphics(
+  brief: PlanBrief,
+  model: LanguageModel,
+  opts: { returnTrace: true },
+): Promise<PlanGraphicsTrace>
+export async function planGraphics(
+  brief: PlanBrief,
+  model: LanguageModel,
+  opts?: { returnTrace?: boolean },
+): Promise<GraphicPlan | PlanGraphicsTrace> {
+  const prompt = buildPlannerPrompt(brief)
 
   const result = await generateText({
     model,
@@ -132,5 +168,19 @@ ${videoDuration}${fpsLine}${captionLayerLine}`
     output: Output.object({ schema: GraphicPlanSchema }),
   })
 
-  return result.output as GraphicPlan
+  const plan = result.output as GraphicPlan
+
+  if (opts?.returnTrace) {
+    return {
+      plan,
+      systemPrompt: PLANNER_SYSTEM_PROMPT,
+      userPrompt: prompt,
+      rawOutput: JSON.stringify(plan),
+      usage: extractUsage(result.usage as Record<string, unknown>),
+      finishReason: result.finishReason ?? "unknown",
+      modelId: result.response?.modelId ?? "unknown",
+    }
+  }
+
+  return plan
 }

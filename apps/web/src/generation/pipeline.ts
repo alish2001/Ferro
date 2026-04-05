@@ -1,5 +1,6 @@
 import { extractComponentCode, stripMarkdownFences } from "@/helpers/sanitize-response"
 import type {
+  DevModeStageTrace,
   FerroGenerateRequest,
   FerroGenerateResponse,
   FerroGenerateStreamEvent,
@@ -9,12 +10,13 @@ import type {
   FerroLayerVersion,
 } from "@/lib/ferro-contracts"
 import { FAST_MODEL_ID, getModel } from "@/lib/models"
-import { getCombinedSkillContent } from "@/skills"
+import { getCombinedSkillContent, type SkillName } from "@/skills"
 import { buildCaptionsLayerCode } from "./captions-layer"
 import { generateLayer } from "./generator"
 import { planGraphics } from "./planner"
 import { buildSystemPrompt } from "./prompts"
 import { detectSkills } from "./skills"
+import type { GraphicPlan } from "./planner"
 
 function nowIso() {
   return new Date().toISOString()
@@ -124,6 +126,29 @@ export interface RunGenerationPipelineResult {
   success: boolean
 }
 
+function makeTrace(
+  stageId: string,
+  stageName: string,
+  partial: Partial<DevModeStageTrace>,
+): DevModeStageTrace {
+  return {
+    stageId,
+    stageName,
+    status: "pending",
+    systemPrompt: null,
+    userPrompt: null,
+    rawOutput: null,
+    modelId: null,
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+    tokenUsage: null,
+    finishReason: null,
+    error: null,
+    ...partial,
+  }
+}
+
 export async function runGenerationPipeline({
   request,
   onEvent,
@@ -134,6 +159,7 @@ export async function runGenerationPipeline({
   const generationId = crypto.randomUUID()
   const createdAt = nowIso()
   const session = createBaseSession(request, generationId, createdAt)
+  const devMode = request.devMode ?? false
 
   await onEvent?.({
     type: "job-started",
@@ -154,7 +180,48 @@ export async function runGenerationPipeline({
       .filter(Boolean)
       .join("\n")
 
-    const skills = await detectSkills(skillPrompt, fastModel)
+    // ── STAGE 1: Skill Detection ──────────────────────────────────
+
+    if (devMode) {
+      await onEvent?.({
+        type: "debug-stage-update",
+        generationId,
+        trace: makeTrace("skill-detection", "Skill Detection", {
+          status: "running",
+          userPrompt: skillPrompt,
+          modelId: FAST_MODEL_ID,
+          startedAt: nowIso(),
+        }),
+      })
+    }
+
+    const skillT0 = Date.now()
+    let skills: string[]
+
+    if (devMode) {
+      const traceResult = await detectSkills(skillPrompt, fastModel, { returnTrace: true })
+      skills = traceResult.skills
+      const skillT1 = Date.now()
+      await onEvent?.({
+        type: "debug-stage-update",
+        generationId,
+        trace: makeTrace("skill-detection", "Skill Detection", {
+          status: "complete",
+          systemPrompt: traceResult.systemPrompt,
+          userPrompt: traceResult.userPrompt,
+          rawOutput: traceResult.rawOutput,
+          modelId: traceResult.modelId,
+          startedAt: new Date(skillT0).toISOString(),
+          completedAt: nowIso(),
+          durationMs: skillT1 - skillT0,
+          tokenUsage: traceResult.usage,
+          finishReason: traceResult.finishReason,
+        }),
+      })
+    } else {
+      skills = await detectSkills(skillPrompt, fastModel)
+    }
+
     session.skills = skills
     session.updatedAt = nowIso()
 
@@ -164,22 +231,59 @@ export async function runGenerationPipeline({
       skills,
     })
 
-    const plan = await planGraphics(
-      {
-        taste: request.taste,
-        transcript: request.transcript,
-        instructions: request.instructions,
-        videoDurationSeconds: request.videoDurationSeconds,
-        videoFps: request.videoFps,
-        captions: request.captions,
-        includeCaptionLayer: request.includeCaptionLayer,
-      },
-      fastModel,
-    )
+    // ── STAGE 2: Graphic Planning ─────────────────────────────────
+
+    const planBrief = {
+      taste: request.taste,
+      transcript: request.transcript,
+      instructions: request.instructions,
+      videoDurationSeconds: request.videoDurationSeconds,
+      videoFps: request.videoFps,
+      captions: request.captions,
+      includeCaptionLayer: request.includeCaptionLayer,
+    }
+
+    if (devMode) {
+      await onEvent?.({
+        type: "debug-stage-update",
+        generationId,
+        trace: makeTrace("planning", "Graphic Planning", {
+          status: "running",
+          modelId: FAST_MODEL_ID,
+          startedAt: nowIso(),
+        }),
+      })
+    }
+
+    const planT0 = Date.now()
+    let plan: GraphicPlan
+
+    if (devMode) {
+      const traceResult = await planGraphics(planBrief, fastModel, { returnTrace: true })
+      plan = traceResult.plan
+      const planT1 = Date.now()
+      await onEvent?.({
+        type: "debug-stage-update",
+        generationId,
+        trace: makeTrace("planning", "Graphic Planning", {
+          status: "complete",
+          systemPrompt: traceResult.systemPrompt,
+          userPrompt: traceResult.userPrompt,
+          rawOutput: traceResult.rawOutput,
+          modelId: traceResult.modelId,
+          startedAt: new Date(planT0).toISOString(),
+          completedAt: nowIso(),
+          durationMs: planT1 - planT0,
+          tokenUsage: traceResult.usage,
+          finishReason: traceResult.finishReason,
+        }),
+      })
+    } else {
+      plan = await planGraphics(planBrief, fastModel)
+    }
 
     const layers = plan.layers.map((layer) => createQueuedLayer(layer))
     session.layers = layers
-    // If the source video's native fps was detected, use it — don't let the planner guess
     const canonicalFps = request.videoFps ?? plan.fps
     session.fps = canonicalFps
     session.durationInFrames = request.videoDurationSeconds
@@ -200,8 +304,27 @@ export async function runGenerationPipeline({
       layers,
     })
 
-    const skillContent = getCombinedSkillContent(skills)
+    // ── STAGE 3: System Prompt Build (no LLM) ─────────────────────
+
+    const skillContent = getCombinedSkillContent(skills as SkillName[])
     const systemPrompt = buildSystemPrompt(skillContent)
+
+    if (devMode) {
+      await onEvent?.({
+        type: "debug-stage-update",
+        generationId,
+        trace: makeTrace("system-prompt-build", "System Prompt Build", {
+          status: "complete",
+          userPrompt: `Skills: ${skills.join(", ")}`,
+          rawOutput: systemPrompt,
+          startedAt: nowIso(),
+          completedAt: nowIso(),
+          durationMs: 0,
+        }),
+      })
+    }
+
+    // ── STAGE 4: Parallel Layer Generation ────────────────────────
 
     const results = await Promise.allSettled(
       plan.layers.map(async (planLayer, index) => {
@@ -220,18 +343,68 @@ export async function runGenerationPipeline({
           layerId: queuedLayer.id,
         })
 
-        // Caption layers use a pre-built template — no LLM call needed
+        const layerBrief = `Layer type: ${planLayer.type}\n\n${planLayer.brief}`
+
+        if (devMode) {
+          await onEvent?.({
+            type: "debug-stage-update",
+            generationId,
+            trace: makeTrace(`layer-gen-${queuedLayer.id}`, `Layer: ${planLayer.type}`, {
+              status: "running",
+              systemPrompt,
+              userPrompt: layerBrief,
+              modelId: planLayer.type === "captions" ? null : request.model,
+              startedAt: nowIso(),
+            }),
+          })
+        }
+
+        const layerT0 = Date.now()
         let code: string
+
         if (planLayer.type === "captions") {
           code = buildCaptionsLayerCode(request.captions ?? [])
+          if (devMode) {
+            await onEvent?.({
+              type: "debug-stage-update",
+              generationId,
+              trace: makeTrace(`layer-gen-${queuedLayer.id}`, `Layer: ${planLayer.type}`, {
+                status: "complete",
+                systemPrompt: null,
+                userPrompt: layerBrief,
+                rawOutput: code,
+                modelId: null,
+                startedAt: new Date(layerT0).toISOString(),
+                completedAt: nowIso(),
+                durationMs: Date.now() - layerT0,
+              }),
+            })
+          }
+        } else if (devMode) {
+          const traceResult = await generateLayer(layerBrief, systemPrompt, selectedModel, { returnTrace: true })
+          code = extractComponentCode(stripMarkdownFences(traceResult.code))
+          const layerT1 = Date.now()
+          await onEvent?.({
+            type: "debug-stage-update",
+            generationId,
+            trace: makeTrace(`layer-gen-${queuedLayer.id}`, `Layer: ${planLayer.type}`, {
+              status: "complete",
+              systemPrompt: traceResult.systemPrompt,
+              userPrompt: traceResult.userPrompt,
+              rawOutput: traceResult.code,
+              modelId: traceResult.modelId,
+              startedAt: new Date(layerT0).toISOString(),
+              completedAt: nowIso(),
+              durationMs: layerT1 - layerT0,
+              tokenUsage: traceResult.usage,
+              finishReason: traceResult.finishReason,
+            }),
+          })
         } else {
-          const rawCode = await generateLayer(
-            `Layer type: ${planLayer.type}\n\n${planLayer.brief}`,
-            systemPrompt,
-            selectedModel,
-          )
+          const rawCode = await generateLayer(layerBrief, systemPrompt, selectedModel)
           code = extractComponentCode(stripMarkdownFences(rawCode))
         }
+
         const version: FerroLayerVersion = {
           id: crypto.randomUUID(),
           layerId: queuedLayer.id,
