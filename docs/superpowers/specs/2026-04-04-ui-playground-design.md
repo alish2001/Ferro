@@ -232,6 +232,52 @@ Displayed as a small badge in the card header: `renders: 14`
 - States should cover: default, loading/streaming, success/complete, error/failed
 - `tags` should include "streaming" if it has a stream simulator, "animated" if it uses framer-motion
 - Keep fixture files focused — mock data factories go in the fixture, not in shared utils
+
+## Profiling & Diagnosing Components with Next.js MCP
+
+The playground runs on the Next.js 16 dev server, which exposes MCP tools at `/_next/mcp`
+automatically. Use these to profile and diagnose component behavior in real time without
+leaving the terminal.
+
+### Setup
+
+1. Start the dev server: `bun run dev:web` (port 3000 by default)
+2. Call `nextjs_index` to discover the running server and available tools
+3. Navigate to `http://localhost:3000/playground` in the browser
+
+### Diagnosing render issues
+
+Use `nextjs_call` to query the running dev server:
+
+- **Check for errors**: `nextjs_call(port="3000", toolName="get_errors")` — surfaces
+  compilation and runtime errors from the playground page without needing to check
+  the browser console
+- **List routes**: `nextjs_call(port="3000", toolName="get_routes")` — verify the
+  `/playground` route is registered and active
+- **Clear cache**: useful after changing fixture data or component code to force
+  a clean re-render
+
+### Browser-based profiling
+
+Use `browser_eval` for deeper component analysis:
+
+- **Take screenshots**: `browser_eval(action="screenshot")` — capture the playground
+  state to visually verify component rendering
+- **Evaluate JS**: `browser_eval(action="evaluate", script="...")` — run profiling
+  scripts in the browser context, e.g. query React fiber tree, measure paint times
+- **Console messages**: `browser_eval(action="console_messages")` — check for React
+  warnings (e.g., missing keys, state updates on unmounted components)
+
+### Workflow for optimizing a component
+
+1. Add the component to the playground canvas via ⌘K
+2. Switch between states / start stream simulation
+3. Run `nextjs_call(port="3000", toolName="get_errors")` to check for runtime issues
+4. Use `browser_eval(action="console_messages")` to catch React warnings
+5. Use `browser_eval(action="screenshot")` to verify visual output
+6. Check the render counter badge — if counts are unexpectedly high, investigate
+   with React DevTools Profiler or `browser_eval` to trace re-render sources
+7. Make changes → Fast Refresh applies instantly → repeat from step 3
 ```
 
 ### Addition to `apps/web/src/components/AGENTS.md` (or create if missing)
@@ -243,6 +289,15 @@ When creating or modifying a UI component in this directory, ensure a correspond
 `.fixture.ts` exists in `src/app/playground/fixtures/` and is registered in
 `src/app/playground/registry.ts`. Update the fixture if you change the component's
 props interface.
+
+## Profiling Components
+
+Use the Next.js MCP tools to profile components in the playground:
+
+1. Ensure the dev server is running (`bun run dev:web`)
+2. Use `nextjs_index` to discover the server, then `nextjs_call` to query errors
+3. Use `browser_eval` for screenshots, console messages, and JS evaluation
+4. See `src/app/playground/AGENTS.md` for the full profiling workflow
 ```
 
 ---
