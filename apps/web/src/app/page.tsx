@@ -239,9 +239,32 @@ export default function Home() {
   const [includeCaptionLayer, setIncludeCaptionLayer] = useState(false)
 
   // Dev mode state
-  const [devMode, setDevMode] = useState(false)
+  const [devMode, setDevMode] = useState(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("ferro-dev-mode") === "1"
+  })
   const [stageTraces, setStageTraces] = useState<Map<string, DevModeStageTrace>>(new Map())
   const [isRerunning, setIsRerunning] = useState(false)
+
+  function persistStageTraces(generationId: string, traces: Map<string, DevModeStageTrace>) {
+    try {
+      const entries = Array.from(traces.entries())
+      sessionStorage.setItem(`ferro-traces:${generationId}`, JSON.stringify(entries))
+    } catch {
+      // sessionStorage full or unavailable — non-critical
+    }
+  }
+
+  function loadStageTraces(generationId: string): Map<string, DevModeStageTrace> {
+    try {
+      const raw = sessionStorage.getItem(`ferro-traces:${generationId}`)
+      if (!raw) return new Map()
+      const entries: [string, DevModeStageTrace][] = JSON.parse(raw)
+      return new Map(entries)
+    } catch {
+      return new Map()
+    }
+  }
 
   const formVideoInputRef = useRef<HTMLInputElement>(null)
   const previewVideoInputRef = useRef<HTMLInputElement>(null)
@@ -350,6 +373,7 @@ export default function Home() {
       setCurrentSession(session)
       setSelectedModel(session.request.model)
       setResolution({ width: session.width, height: session.height })
+      setStageTraces(loadStageTraces(session.id))
     }
 
     window.addEventListener("dragover", preventWindowFileDrop)
@@ -529,6 +553,7 @@ export default function Home() {
       setVideoObjectUrl(null)
     }
     resetRenderState()
+    setStageTraces(loadStageTraces(sessionId))
     commitSession(session)
     setStep(session.layers.length > 0 ? "preview" : "form")
   }
@@ -851,6 +876,7 @@ export default function Home() {
             setStageTraces((prev) => {
               const next = new Map(prev)
               next.set(streamEvent.trace.stageId, streamEvent.trace)
+              persistStageTraces(streamEvent.generationId, next)
               return next
             })
             break
@@ -912,6 +938,7 @@ export default function Home() {
             setStageTraces((prev) => {
               const next = new Map(prev)
               next.set(event.trace.stageId, event.trace)
+              persistStageTraces(event.generationId, next)
               return next
             })
             break
@@ -1851,7 +1878,11 @@ export default function Home() {
                   <input
                     type="checkbox"
                     checked={devMode}
-                    onChange={(e) => setDevMode(e.target.checked)}
+                    onChange={(e) => {
+                      const on = e.target.checked
+                      setDevMode(on)
+                      localStorage.setItem("ferro-dev-mode", on ? "1" : "0")
+                    }}
                     className="rounded border-white/20 accent-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
                   />
                   Dev Mode
