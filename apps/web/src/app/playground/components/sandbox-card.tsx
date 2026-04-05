@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, use, useMemo, useState, type ReactNode } from "react";
+import { createContext, use, useCallback, useMemo, useState, type ReactNode } from "react";
+
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -77,10 +78,13 @@ function StreamControls() {
   if (!fixture.streamSimulator) return null;
 
   return (
-    <StreamTransport
-      simulator={fixture.streamSimulator}
-      onPropsUpdate={setStreamOverrides}
-    />
+    <div className="flex items-center gap-1.5 border-l pl-2">
+      <span className="text-[10px] text-muted-foreground">stream</span>
+      <StreamTransport
+        simulator={fixture.streamSimulator}
+        onPropsUpdate={setStreamOverrides}
+      />
+    </div>
   );
 }
 
@@ -135,9 +139,21 @@ export function SandboxCard({
   instanceId: string;
   selectedState: string;
 }) {
-  const [streamOverrides, setStreamOverrides] = useState<
-    Record<string, unknown>
-  >({});
+  const [streamState, setStreamState] = useState({
+    stateKey: selectedState,
+    overrides: {} as Record<string, unknown>,
+  });
+
+  const streamOverrides = useMemo(
+    () => (streamState.stateKey === selectedState ? streamState.overrides : {}),
+    [streamState, selectedState],
+  );
+
+  const setStreamOverrides = useCallback(
+    (overrides: Record<string, unknown>) =>
+      setStreamState({ stateKey: selectedState, overrides }),
+    [selectedState],
+  );
 
   const resolvedProps = useMemo(() => {
     const stateEntry = selectedState !== "default" ? fixture.states[selectedState] : undefined;
@@ -145,17 +161,14 @@ export function SandboxCard({
     return { ...fixture.defaultProps, ...stateOverrides, ...streamOverrides };
   }, [fixture, selectedState, streamOverrides]);
 
-  const ctx = useMemo<SandboxCardContext>(
-    () => ({
-      fixture,
-      instanceId,
-      selectedState,
-      resolvedProps,
-      streamOverrides,
-      setStreamOverrides,
-    }),
-    [fixture, instanceId, selectedState, resolvedProps, streamOverrides],
-  );
+  const ctx: SandboxCardContext = {
+    fixture,
+    instanceId,
+    selectedState,
+    resolvedProps,
+    streamOverrides,
+    setStreamOverrides,
+  };
 
   return (
     <SandboxCardCtx value={ctx}>
