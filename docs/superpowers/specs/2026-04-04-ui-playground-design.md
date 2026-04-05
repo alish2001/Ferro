@@ -341,9 +341,65 @@ export const pipelineFlowchartFixture: ComponentFixture<typeof defaultProps> = {
 
 ---
 
+## Fixture Generation Strategy
+
+All 14 existing components need fixtures created as part of the initial implementation. These should be built via **parallel subagents** — each agent creates one or more fixture files independently since fixtures have no interdependencies.
+
+### Subagent batching
+
+Group fixtures by complexity and dependencies to maximize parallelism:
+
+**Batch 1 — Simple components (4 agents in parallel):**
+Each of these components is self-contained with simple props. One agent per fixture.
+
+| Agent | Fixtures | Why grouped |
+|-------|----------|-------------|
+| 1 | `button.fixture.ts`, `spinner.fixture.ts`, `label.fixture.ts` | Trivial props, no streaming, fast to write |
+| 2 | `status-pill.fixture.ts`, `animated-progress.fixture.ts` | Small components but need stream simulators |
+| 3 | `card.fixture.ts`, `field-card.fixture.ts` | Card family, shared patterns |
+| 4 | `resolution-selector.fixture.ts`, `model-selector.fixture.ts` | Form controls with controlled state |
+
+**Batch 2 — Complex/streaming components (3 agents in parallel):**
+These require richer mock data and stream simulators. Run after Batch 1 so agents can reference simpler fixtures as examples.
+
+| Agent | Fixtures | Why grouped |
+|-------|----------|-------------|
+| 5 | `generation-status.fixture.ts` | Needs mock `JobState`, progress simulation, layer counts |
+| 6 | `pipeline-flowchart.fixture.ts`, `stage-detail.fixture.ts` | Dev-mode pair, share `DevModeStageTrace` mock data |
+| 7 | `graphic-card.fixture.ts`, `compositor-preview.fixture.ts`, `pending-assistant-text.fixture.ts` | Preview trio, need mock `FerroLayer`/`FerroLayerMessage` data, Remotion dynamic imports |
+
+### Mock data requirements per fixture
+
+Each fixture agent must generate realistic mock data based on the component's prop types from `ferro-contracts.ts`. Key mock data needed:
+
+- **FerroLayer** (for GraphicCard, CompositorPreview): mock layers with `id`, `code` (simple valid Remotion component string), `brief`, `type`, `title`, `from`, `durationInFrames`, `status`
+- **FerroLayerMessage** (for GraphicCard): mock conversation with user/assistant messages in pending/complete states
+- **FerroLayerVersion** (for GraphicCard): mock versions with different sources (initial, manual, ai-edit)
+- **DevModeStageTrace** (for PipelineFlowchart, StageDetail): mock traces for each stage ID (skill-detection, planning, system-prompt-build, layer-gen-*) with realistic system/user prompts, token counts, timing
+- **JobState** (for GenerationStatus): mock job states for each tone (idle, loading, success, error)
+- **Resolution** (for ResolutionSelector): preset resolutions (1920×1080, 1080×1920, etc.)
+
+Mock data should be:
+- Realistic enough to visually represent production behavior
+- Self-contained within each fixture file (no shared mock data utils)
+- Using actual Zod types from `ferro-contracts.ts` for type safety
+
+### Agent instructions template
+
+Each subagent receives:
+1. The `ComponentFixture` type definition from `playground/types.ts`
+2. The target component's source file (to read props interface)
+3. Relevant types from `ferro-contracts.ts`
+4. One of the example fixtures from this spec as a reference
+5. Instruction to create the fixture file and add the export to `registry.ts`
+
+### Registry assembly
+
+After all fixture agents complete, a final step assembles `registry.ts` by importing all fixture exports. This is sequential — it depends on all agents finishing.
+
+---
+
 ## What This Spec Does NOT Cover
 
-- Individual fixture implementations for all 14 components (those are implementation details)
 - Visual styling of the sandbox cards (follow existing shadcn/dark theme conventions)
-- Specific mock data values (fixture authors choose appropriate mocks)
 - Keyboard shortcuts beyond ⌘K (can be added incrementally)
