@@ -53,7 +53,7 @@ function Title() {
 function StateDropdown() {
   const { fixture, instanceId } = useSandboxCard();
   const { setFixtureState } = usePlayground();
-  const stateNames = ["default", ...Object.keys(fixture.states)];
+  const stateEntries = Object.entries(fixture.states);
 
   return (
     <select
@@ -61,9 +61,10 @@ function StateDropdown() {
       onChange={(e) => setFixtureState(instanceId, e.target.value)}
       defaultValue="default"
     >
-      {stateNames.map((name) => (
+      <option value="default">default — baseline props</option>
+      {stateEntries.map(([name, state]) => (
         <option key={name} value={name}>
-          {name}
+          {name} — {state.description}
         </option>
       ))}
     </select>
@@ -138,8 +139,8 @@ export function SandboxCard({
   >({});
 
   const resolvedProps = useMemo(() => {
-    const stateOverrides =
-      selectedState !== "default" ? fixture.states[selectedState] ?? {} : {};
+    const stateEntry = selectedState !== "default" ? fixture.states[selectedState] : undefined;
+    const stateOverrides = stateEntry?.props ?? {};
     return { ...fixture.defaultProps, ...stateOverrides, ...streamOverrides };
   }, [fixture, selectedState, streamOverrides]);
 

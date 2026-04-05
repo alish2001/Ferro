@@ -15,7 +15,7 @@ export interface ComponentFixture<P = Record<string, unknown>> {
   tags: string[];
   component: ComponentType<P>;
   defaultProps: P;
-  states: Record<string, Partial<P>>;
+  states: Record<string, { description: string; props: Partial<P> }>;
   thumbnail?: ComponentType;
   streamSimulator?: StreamSimulator<P>;
 }
