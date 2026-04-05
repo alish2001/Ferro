@@ -5,7 +5,6 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { RenderCounter } from "./render-counter";
 import { StreamTransport } from "./stream-transport";
 import { usePlayground } from "../playground-provider";
 import type { ComponentFixture } from "../types";
@@ -160,7 +159,6 @@ export function SandboxCard({
       <Card data-sandbox-card={fixture.id} className="overflow-hidden">
         <Header>
           <Title />
-          <RenderCounter />
           <StateDropdown />
           <StreamControls />
           <CloseButton />
