@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 
 import type {
   FerroGenerationSession,
@@ -225,8 +225,15 @@ export function useGenerationSession() {
 
     const savedSession = debouncedSave(nextSession, flush) ?? nextSession
     sessionRef.current = savedSession
-    setCurrentSession(savedSession)
-    if (flush) refreshRecentSessions()
+    if (flush) {
+      setCurrentSession(savedSession)
+      refreshRecentSessions()
+    } else {
+      // Use startTransition for streaming updates to prevent UI flickering
+      startTransition(() => {
+        setCurrentSession(savedSession)
+      })
+    }
   }
 
   const updateSession: UpdateSessionFn = (mutator) => {
