@@ -17,6 +17,7 @@ bun.lockb
 coverage/
 playwright-report/
 test-results/
+.playwright-mcp/
 *.tsbuildinfo
 
 # Build and render outputs
