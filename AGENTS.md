@@ -41,13 +41,15 @@ This is the Next.js App Router surface for the product flow.
 
 Pure async functions — no React, no Next.js imports. Each module does one thing and can be swapped independently.
 
-| File | Purpose |
-|---|---|
-| `generation/prompts.ts` | `OVERLAY_SYSTEM_PROMPT` and `buildSystemPrompt(skillContent)` |
-| `generation/skills.ts` | `detectSkills(prompt, model)` → `SkillName[]` |
-| `generation/planner.ts` | `planGraphics(brief, model)` → layer plan with timing |
-| `generation/generator.ts` | `generateLayer(brief, systemPrompt, model)` → code string |
+
+| File                           | Purpose                                                                                |
+| ------------------------------ | -------------------------------------------------------------------------------------- |
+| `generation/prompts.ts`        | `OVERLAY_SYSTEM_PROMPT` and `buildSystemPrompt(skillContent)`                          |
+| `generation/skills.ts`         | `detectSkills(prompt, model)` → `SkillName[]`                                          |
+| `generation/planner.ts`        | `planGraphics(brief, model)` → layer plan with timing                                  |
+| `generation/generator.ts`      | `generateLayer(brief, systemPrompt, model)` → code string                              |
 | `generation/captions-layer.ts` | `buildCaptionsLayerCode(captions)` → pre-built Remotion component string (no LLM call) |
+
 
 All generation calls use the Vercel AI SDK v6 pattern: `generateText` with `output: Output.object({ schema })`. **Do not use `generateObject`** — it is deprecated in AI SDK v6. Import `Output` (capital O) from `"ai"`.
 
@@ -74,6 +76,7 @@ Response shape: `{ layers, fps, width, height, durationInFrames, skills }`
 #### Transcription API (`src/app/api/transcribe/route.ts`)
 
 `POST /api/transcribe` accepts `multipart/form-data` with a `video` field. Streams NDJSON events:
+
 - `installing` — whisper.cpp first-run install in progress
 - `extracting` — writing video to temp file
 - `videoMeta` — detected native fps via ffprobe (`{ fps: number }`)
@@ -248,7 +251,8 @@ All Remotion packages across both `apps/web` and `packages/render-core` must be 
 Current pinned version: **4.0.445**
 
 When upgrading Remotion:
-1. Update all `@remotion/*` and `remotion` entries in both `apps/web/package.json` and `packages/render-core/package.json` to the same version
+
+1. Update all `@remotion/`* and `remotion` entries in both `apps/web/package.json` and `packages/render-core/package.json` to the same version
 2. Run `bun install` from the repo root
 3. Run `bun run build:render-bundle`
 4. Verify with `bun run --cwd packages/render-core node_modules/.bin/remotion versions`
