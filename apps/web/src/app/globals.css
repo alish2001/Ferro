@@ -6,6 +6,7 @@
 
 /* Light theme (default) */
 :root {
+  color-scheme: light;
   --paper: #ffffff;
   --paper-strong: #fafafa;
   --paper-muted: #71717a;
@@ -75,6 +76,7 @@
 
 /* Dark theme */
 .dark {
+  color-scheme: dark;
   --paper: #ffffff;
   --paper-strong: #fafafa;
   --paper-muted: #d4d4d8;
@@ -186,8 +188,8 @@ a {
 }
 
 ::selection {
-  background: var(--accent);
-  color: var(--paper-strong);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 @theme inline {

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useState } from "react"
+import { useTheme } from "next-themes"
 import type { DevModeStageTrace } from "@/lib/ferro-contracts"
 import { Button } from "@/components/ui/button"
 
@@ -37,6 +38,7 @@ function CodeBlock({
   content,
   isEditing,
   editValue,
+  editorTheme,
   onEditChange,
 }: {
   stageId: string
@@ -44,6 +46,7 @@ function CodeBlock({
   content: string | null
   isEditing: boolean
   editValue: string
+  editorTheme: "vs" | "vs-dark"
   onEditChange: (value: string) => void
 }) {
   if (!content && !isEditing) return null
@@ -67,7 +70,7 @@ function CodeBlock({
           onChange={(value) => {
             if (isEditing && value != null) onEditChange(value)
           }}
-          theme="vs-dark"
+          theme={editorTheme}
           options={{
             readOnly: !isEditing,
             minimap: { enabled: false },
@@ -117,10 +120,12 @@ export interface StageDetailProps {
 }
 
 export function StageDetail({ trace, onRerun, isRerunning }: StageDetailProps) {
+  const { resolvedTheme } = useTheme()
   const [isEditing, setIsEditing] = useState(false)
   const [editSystemPrompt, setEditSystemPrompt] = useState(trace.systemPrompt ?? "")
   const [editUserPrompt, setEditUserPrompt] = useState(trace.userPrompt ?? "")
   const [cascade, setCascade] = useState(false)
+  const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "vs"
 
   const handleStartEditing = useCallback(() => {
     setEditSystemPrompt(trace.systemPrompt ?? "")
@@ -177,6 +182,7 @@ export function StageDetail({ trace, onRerun, isRerunning }: StageDetailProps) {
           content={trace.systemPrompt}
           isEditing={isEditing}
           editValue={editSystemPrompt}
+          editorTheme={editorTheme}
           onEditChange={setEditSystemPrompt}
         />
         <CodeBlock
@@ -185,6 +191,7 @@ export function StageDetail({ trace, onRerun, isRerunning }: StageDetailProps) {
           content={trace.userPrompt}
           isEditing={isEditing}
           editValue={editUserPrompt}
+          editorTheme={editorTheme}
           onEditChange={setEditUserPrompt}
         />
       </div>
@@ -197,6 +204,7 @@ export function StageDetail({ trace, onRerun, isRerunning }: StageDetailProps) {
           content={trace.rawOutput}
           isEditing={false}
           editValue=""
+          editorTheme={editorTheme}
           onEditChange={() => {}}
         />
       ) : null}
