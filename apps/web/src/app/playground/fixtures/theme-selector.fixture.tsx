@@ -14,7 +14,7 @@ export const themeSelectorFixture: ComponentFixture<ThemeSelectorFixtureProps> =
     category: "base-ui",
     description:
       "Icon button cycling system / light / dark using next-themes (Monitor, Sun, Moon)",
-    tags: ["theme", "accessibility"],
+    tags: ["theme", "accessibility", "animated"],
     component: ThemeSelector,
     defaultProps: {},
     states: {
