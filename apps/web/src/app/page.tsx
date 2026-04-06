@@ -1,10 +1,12 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 
 import { FormView } from "@/components/form-view"
 import { PreviewView } from "@/components/preview-view"
+import { ThemeSelector } from "@/components/ui/theme-selector"
 import type {
   FerroGenerateRequest,
   FerroGenerateStreamEvent,
@@ -33,6 +35,14 @@ export default function Home() {
   const [step, setStep] = useState<"form" | "preview">("form")
   const [selectedModel, setSelectedModel] = useState(
     "anthropic:claude-sonnet-4-6",
+  )
+  const prefersReducedMotion = useReducedMotion()
+  const stepMotionTransition = useMemo(
+    () => ({
+      duration: prefersReducedMotion ? 0 : 0.22,
+      ease: [0.22, 1, 0.36, 1] as const,
+    }),
+    [prefersReducedMotion],
   )
 
   const session = useGenerationSession()
@@ -81,10 +91,7 @@ export default function Home() {
       const interrupted = interruptedSessions[0]
       session.commitSession(interrupted, true)
       setSelectedModel(interrupted.request.model)
-      video.setResolution({
-        width: interrupted.width,
-        height: interrupted.height,
-      })
+      video.restoreSessionVideo(interrupted)
       dev.setStageTraces(loadStageTraces(interrupted.id))
     }
 
@@ -104,7 +111,6 @@ export default function Home() {
 
     setSelectedModel(restored.request.model)
     video.restoreSessionVideo(restored)
-    video.resetVideoState()
     render.resetRenderState()
     dev.setStageTraces(loadStageTraces(sessionId))
     setStep(restored.layers.length > 0 ? "preview" : "form")
@@ -117,13 +123,20 @@ export default function Home() {
     const taste = (formData.get("taste") as string) ?? ""
     const transcript = (formData.get("transcript") as string) ?? ""
     const instructions = (formData.get("prompt") as string) ?? ""
+    const finalTranscript = video.transcriptText || transcript
+    const hasCaptionData = Boolean(video.captions?.length)
 
-    if (!taste && !transcript && !instructions) {
+    if (
+      !taste.trim() &&
+      !finalTranscript.trim() &&
+      !instructions.trim() &&
+      !hasCaptionData
+    ) {
       session.setFallbackJobState({
         tone: "error",
         title: "Nothing to generate",
         detail:
-          "Fill in at least one field — taste, transcript, or instructions.",
+          "Add taste, transcript, instructions, or attach caption timing before generating.",
       })
       return
     }
@@ -141,9 +154,6 @@ export default function Home() {
 
     // Warm preview chunks while generation runs
     preloadPreviewChunks()
-
-    // Fix #12: Start video meta and generate request in parallel
-    const finalTranscript = video.transcriptText || transcript
 
     const request: FerroGenerateRequest = {
       taste,
@@ -484,86 +494,122 @@ export default function Home() {
     }
   }
 
-  if (
+  const previewSession = session.currentSession
+  const showPreview =
     step === "preview" &&
-    session.currentSession &&
-    session.currentSession.layers.length > 0
-  ) {
-    return (
-      <PreviewView
-        ref={previewRef}
-        session={session.currentSession}
-        videoObjectUrl={video.videoObjectUrl}
-        needsVideoReattach={needsVideoReattach}
-        payload={session.payload}
-        messagesByLayer={session.messagesByLayer}
-        versionsByLayer={session.versionsByLayer}
-        renderMode={render.renderMode}
-        setRenderMode={render.setRenderMode}
-        renderJob={render.renderJob}
-        renderProgress={render.renderProgress}
-        renderMessage={render.renderMessage}
-        renderError={render.renderError}
-        isExporting={render.isExporting}
-        serverIsBusy={render.serverIsBusy}
-        canDownloadServer={render.canDownloadServer}
-        canRetryClient={render.canRetryClient}
-        canDownloadClient={render.canDownloadClient}
-        clientDownloadUrl={render.clientDownloadUrl}
-        handleExport={render.handleExport}
-        downloadFromUrl={render.downloadFromUrl}
-        devMode={dev.devMode}
-        stageTraces={dev.stageTraces}
-        isRerunning={dev.isRerunning}
-        handleRerunStage={dev.handleRerunStage}
-        onBackToForm={() => setStep("form")}
-        previewVideoInputRef={video.previewVideoInputRef}
-        handlePreviewVideoChange={video.handlePreviewVideoChange}
-        onLayerCodeChange={handleLayerCodeChange}
-        onLayerEditPrompt={handleLayerEditPrompt}
-      />
-    )
-  }
+    Boolean(previewSession && previewSession.layers.length > 0)
 
   return (
-    <FormView
-      videoFile={video.videoFile}
-      videoObjectUrl={video.videoObjectUrl}
-      isDraggingVideo={video.isDraggingVideo}
-      resolution={video.resolution}
-      setResolution={video.setResolution}
-      formVideoInputRef={video.formVideoInputRef}
-      handleVideoChange={video.handleVideoChange}
-      handleVideoDragEnter={video.handleVideoDragEnter}
-      handleVideoDragOver={video.handleVideoDragOver}
-      handleVideoDragLeave={video.handleVideoDragLeave}
-      handleVideoDrop={video.handleVideoDrop}
-      transcriptText={video.transcriptText}
-      setTranscriptText={video.setTranscriptText}
-      transcriptFileName={video.transcriptFileName}
-      captions={video.captions}
-      isTranscribing={video.isTranscribing}
-      transcribeStatus={video.transcribeStatus}
-      includeCaptionLayer={video.includeCaptionLayer}
-      setIncludeCaptionLayer={video.setIncludeCaptionLayer}
-      handleTranscriptFileChange={video.handleTranscriptFileChange}
-      handleTranscribe={video.handleTranscribe}
-      currentSession={session.currentSession}
-      layers={session.layers}
-      layerCounts={session.layerCounts}
-      displayedJobState={session.displayedJobState}
-      generationProgress={session.generationProgress}
-      recentSessions={session.recentSessions}
-      selectedModel={selectedModel}
-      setSelectedModel={setSelectedModel}
-      devMode={dev.devMode}
-      toggleDevMode={dev.toggleDevMode}
-      stageTraces={dev.stageTraces}
-      isRerunning={dev.isRerunning}
-      handleRerunStage={dev.handleRerunStage}
-      onGenerate={handleGenerate}
-      onOpenPreview={() => setStep("preview")}
-      onOpenStoredSession={openStoredSession}
-    />
+    <>
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-end p-4 sm:p-6">
+        <div className="pointer-events-auto">
+          <ThemeSelector />
+        </div>
+      </div>
+      <AnimatePresence mode="wait">
+      {showPreview && previewSession ? (
+        <motion.div
+          key="preview"
+          initial={{
+            opacity: prefersReducedMotion ? 1 : 0,
+            y: prefersReducedMotion ? 0 : 10,
+          }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{
+            opacity: prefersReducedMotion ? 1 : 0,
+            y: prefersReducedMotion ? 0 : -8,
+          }}
+          transition={stepMotionTransition}
+        >
+          <PreviewView
+            ref={previewRef}
+            session={previewSession}
+            videoObjectUrl={video.videoObjectUrl}
+            needsVideoReattach={needsVideoReattach}
+            payload={session.payload}
+            messagesByLayer={session.messagesByLayer}
+            versionsByLayer={session.versionsByLayer}
+            renderMode={render.renderMode}
+            setRenderMode={render.setRenderMode}
+            renderJob={render.renderJob}
+            renderProgress={render.renderProgress}
+            renderMessage={render.renderMessage}
+            renderError={render.renderError}
+            isExporting={render.isExporting}
+            serverIsBusy={render.serverIsBusy}
+            canDownloadServer={render.canDownloadServer}
+            canRetryClient={render.canRetryClient}
+            canDownloadClient={render.canDownloadClient}
+            clientDownloadUrl={render.clientDownloadUrl}
+            handleExport={render.handleExport}
+            downloadFromUrl={render.downloadFromUrl}
+            devMode={dev.devMode}
+            stageTraces={dev.stageTraces}
+            isRerunning={dev.isRerunning}
+            handleRerunStage={dev.handleRerunStage}
+            onBackToForm={() => setStep("form")}
+            previewVideoInputRef={video.previewVideoInputRef}
+            handlePreviewVideoChange={video.handlePreviewVideoChange}
+            onLayerCodeChange={handleLayerCodeChange}
+            onLayerEditPrompt={handleLayerEditPrompt}
+          />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="form"
+          initial={{
+            opacity: prefersReducedMotion ? 1 : 0,
+            y: prefersReducedMotion ? 0 : 10,
+          }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{
+            opacity: prefersReducedMotion ? 1 : 0,
+            y: prefersReducedMotion ? 0 : -8,
+          }}
+          transition={stepMotionTransition}
+        >
+          <FormView
+            videoFile={video.videoFile}
+            isDraggingVideo={video.isDraggingVideo}
+            resolution={video.resolution}
+            setResolution={video.setResolution}
+            formVideoInputRef={video.formVideoInputRef}
+            handleVideoChange={video.handleVideoChange}
+            handleVideoDragEnter={video.handleVideoDragEnter}
+            handleVideoDragOver={video.handleVideoDragOver}
+            handleVideoDragLeave={video.handleVideoDragLeave}
+            handleVideoDrop={video.handleVideoDrop}
+            transcriptText={video.transcriptText}
+            setTranscriptText={video.setTranscriptText}
+            transcriptFileName={video.transcriptFileName}
+            captions={video.captions}
+            detectedVideoFps={video.detectedVideoFps}
+            isTranscribing={video.isTranscribing}
+            transcribeStatus={video.transcribeStatus}
+            includeCaptionLayer={video.includeCaptionLayer}
+            setIncludeCaptionLayer={video.setIncludeCaptionLayer}
+            handleTranscriptFileChange={video.handleTranscriptFileChange}
+            handleTranscribe={video.handleTranscribe}
+            currentSession={session.currentSession}
+            layers={session.layers}
+            layerCounts={session.layerCounts}
+            displayedJobState={session.displayedJobState}
+            generationProgress={session.generationProgress}
+            recentSessions={session.recentSessions}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            devMode={dev.devMode}
+            toggleDevMode={dev.toggleDevMode}
+            stageTraces={dev.stageTraces}
+            isRerunning={dev.isRerunning}
+            handleRerunStage={dev.handleRerunStage}
+            onGenerate={handleGenerate}
+            onOpenPreview={() => setStep("preview")}
+            onOpenStoredSession={openStoredSession}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   )
 }

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // vendored native / wasm bundles — not authored TypeScript
+    "whisper.cpp/**",
   ]),
   // Playground uses `any` for the generic fixture system — intentional
   {

@@ -27,6 +27,17 @@ function isLikelyVideoFile(file: File) {
   return supportedVideoExtensions.some((ext) => lowerName.endsWith(ext))
 }
 
+function captionsToPlainText(captions: FerroCaption[]): string {
+  return captions.map((c) => c.text.trim()).filter(Boolean).join(" ")
+}
+
+function isAbortError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.message === "AbortError")
+  )
+}
+
 interface UseVideoOptions {
   updateSession: UpdateSessionFn
   setFallbackJobState: (state: JobState) => void
@@ -46,7 +57,6 @@ export function useVideo({
     height: 1080,
   })
 
-  // Transcription state
   const [transcriptText, setTranscriptText] = useState("")
   const [transcriptFileName, setTranscriptFileName] = useState<string | null>(
     null,
@@ -60,13 +70,20 @@ export function useVideo({
   const formVideoInputRef = useRef<HTMLInputElement>(null)
   const previewVideoInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
+  const transcribeRunIdRef = useRef(0)
+  const transcribeAbortRef = useRef<AbortController | null>(null)
 
-  // Cleanup object URLs
   useEffect(() => {
     return () => {
       if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl)
     }
   }, [videoObjectUrl])
+
+  useEffect(() => {
+    return () => {
+      transcribeAbortRef.current?.abort()
+    }
+  }, [])
 
   function syncVideoInputs(file: File | null) {
     if (typeof DataTransfer === "undefined") return
@@ -83,25 +100,141 @@ export function useVideo({
     }
   }
 
+  function invalidateTranscriptionRuns() {
+    transcribeAbortRef.current?.abort()
+    transcribeAbortRef.current = null
+    transcribeRunIdRef.current += 1
+  }
+
+  function startTranscription(file: File) {
+    transcribeAbortRef.current?.abort()
+    const runId = ++transcribeRunIdRef.current
+    const controller = new AbortController()
+    transcribeAbortRef.current = controller
+
+    setIsTranscribing(true)
+    setTranscribeStatus("Extracting audio…")
+    setCaptions(null)
+    setDetectedVideoFps(null)
+    setTranscriptText("")
+    setIncludeCaptionLayer(false)
+
+    void (async () => {
+      let segmentBuffer = ""
+
+      try {
+        const body = new FormData()
+        body.append("video", file)
+
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          body,
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        await readNdjsonStream<TranscribeStreamEvent>(res, async (event) => {
+          if (runId !== transcribeRunIdRef.current) return
+
+          switch (event.type) {
+            case "extracting":
+              setTranscribeStatus("Extracting audio…")
+              break
+            case "videoMeta":
+              setDetectedVideoFps(event.fps)
+              break
+            case "transcribing":
+              setTranscribeStatus("Transcribing…")
+              break
+            case "installing":
+              setTranscribeStatus("Installing whisper.cpp (first run)…")
+              break
+            case "progress":
+              setTranscribeStatus(
+                `Transcribing… ${Math.round(event.pct * 100)}%`,
+              )
+              break
+            case "segment": {
+              const { startMs, endMs, text } = event.segment
+              const fmt = (ms: number) => (ms / 1000).toFixed(2) + "s"
+              segmentBuffer += `[${fmt(startMs)} → ${fmt(endMs)}] ${text}\n`
+              setTranscriptText(segmentBuffer)
+              break
+            }
+            case "captions": {
+              const mapped: FerroCaption[] = event.captions.map((c) => ({
+                text: c.text,
+                startMs: c.startMs,
+                endMs: c.endMs,
+              }))
+              setCaptions(mapped)
+              setTranscriptText(captionsToPlainText(mapped))
+              setTranscribeStatus("Transcription ready")
+              setIncludeCaptionLayer(true)
+              setFallbackJobState({
+                tone: "idle",
+                title: "Transcription ready",
+                detail:
+                  "Word-level timing is attached. Adjust taste and prompt, then generate.",
+              })
+              break
+            }
+            case "error":
+              throw new Error(event.error)
+          }
+        })
+      } catch (err) {
+        if (isAbortError(err)) {
+          return
+        }
+        if (runId !== transcribeRunIdRef.current) return
+
+        setTranscribeStatus("Transcription failed")
+        setFallbackJobState({
+          tone: "error",
+          title: "Transcription failed",
+          detail: err instanceof Error ? err.message : "Unknown error",
+        })
+      } finally {
+        if (runId === transcribeRunIdRef.current) {
+          setIsTranscribing(false)
+          transcribeAbortRef.current = null
+        }
+      }
+    })()
+  }
+
   async function attachVideoFile(file: File | null) {
     if (!file) {
+      invalidateTranscriptionRuns()
+      setIsTranscribing(false)
       setVideoFile(null)
       syncVideoInputs(null)
       if (videoObjectUrl) {
         URL.revokeObjectURL(videoObjectUrl)
         setVideoObjectUrl(null)
       }
+      setTranscriptFileName(null)
+      setCaptions(null)
+      setDetectedVideoFps(null)
+      setTranscriptText("")
+      setTranscribeStatus(null)
+      setIncludeCaptionLayer(false)
       setFallbackJobState(initialJobState)
       return
     }
 
     if (!isLikelyVideoFile(file)) {
+      invalidateTranscriptionRuns()
+      setIsTranscribing(false)
       setVideoFile(null)
       syncVideoInputs(null)
       if (videoObjectUrl) {
         URL.revokeObjectURL(videoObjectUrl)
         setVideoObjectUrl(null)
       }
+      setTranscriptFileName(null)
+      setTranscribeStatus(null)
       setFallbackJobState({
         tone: "error",
         title: "Unsupported file",
@@ -111,6 +244,7 @@ export function useVideo({
       return
     }
 
+    setTranscriptFileName(null)
     setVideoFile(file)
     syncVideoInputs(file)
 
@@ -120,7 +254,7 @@ export function useVideo({
     setFallbackJobState({
       tone: "idle",
       title: "Source video attached",
-      detail: "Fill in the remaining fields and hit Generate when ready.",
+      detail: "Transcribing audio…",
     })
 
     updateSession((session) => ({
@@ -133,16 +267,24 @@ export function useVideo({
       updatedAt: new Date().toISOString(),
     }))
 
-    try {
-      const meta = await getVideoMeta(file)
-      setResolution({ width: meta.width, height: meta.height })
-    } catch {
-      // Keep current resolution if we can't read metadata
-    }
+    void getVideoMeta(file)
+      .then((meta) => setResolution({ width: meta.width, height: meta.height }))
+      .catch(() => {
+        // Keep current resolution if we can't read metadata
+      })
+
+    startTranscription(file)
   }
 
   function resetVideoState() {
+    invalidateTranscriptionRuns()
+    setIsTranscribing(false)
     setTranscriptFileName(null)
+    setCaptions(null)
+    setDetectedVideoFps(null)
+    setTranscriptText("")
+    setTranscribeStatus(null)
+    setIncludeCaptionLayer(false)
     setVideoFile(null)
     syncVideoInputs(null)
     if (videoObjectUrl) {
@@ -152,7 +294,22 @@ export function useVideo({
   }
 
   function restoreSessionVideo(session: FerroGenerationSession) {
+    invalidateTranscriptionRuns()
+    setIsTranscribing(false)
+    setVideoFile(null)
+    syncVideoInputs(null)
+    if (videoObjectUrl) {
+      URL.revokeObjectURL(videoObjectUrl)
+      setVideoObjectUrl(null)
+    }
+
     setResolution({ width: session.width, height: session.height })
+    setTranscriptFileName(null)
+    setTranscriptText(session.request.transcript)
+    setCaptions(session.request.captions ?? null)
+    setDetectedVideoFps(session.request.videoFps ?? null)
+    setIncludeCaptionLayer(Boolean(session.request.includeCaptionLayer))
+    setTranscribeStatus(null)
   }
 
   function handleVideoChange(event: ChangeEvent<HTMLInputElement>) {
@@ -169,6 +326,17 @@ export function useVideo({
     const file = event.target.files?.[0] ?? null
     setTranscriptFileName(file?.name ?? null)
     if (file) {
+      invalidateTranscriptionRuns()
+      setIsTranscribing(false)
+      setCaptions(null)
+      setDetectedVideoFps(null)
+      setIncludeCaptionLayer(false)
+      setTranscribeStatus("Imported transcript ready")
+      setFallbackJobState({
+        tone: "idle",
+        title: "Transcript imported",
+        detail: "Review the text, then generate when ready.",
+      })
       file
         .text()
         .then((text) => setTranscriptText(text))
@@ -176,81 +344,16 @@ export function useVideo({
     }
   }
 
-  async function handleTranscribe() {
+  function handleTranscribe() {
     if (!videoFile) {
       setFallbackJobState({
         tone: "error",
         title: "No video",
-        detail: "Upload a video first, then click Transcribe.",
+        detail: "Upload a video first.",
       })
       return
     }
-
-    setIsTranscribing(true)
-    setTranscribeStatus("Extracting audio…")
-    setCaptions(null)
-    setDetectedVideoFps(null)
-    setTranscriptText("")
-
-    try {
-      const body = new FormData()
-      body.append("video", videoFile)
-
-      const res = await fetch("/api/transcribe", { method: "POST", body })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-      let segmentBuffer = ""
-
-      await readNdjsonStream<TranscribeStreamEvent>(res, (event) => {
-        switch (event.type) {
-          case "extracting":
-            setTranscribeStatus("Extracting audio…")
-            break
-          case "videoMeta":
-            setDetectedVideoFps(event.fps)
-            break
-          case "transcribing":
-            setTranscribeStatus("Transcribing…")
-            break
-          case "installing":
-            setTranscribeStatus("Installing whisper.cpp (first run)…")
-            break
-          case "progress":
-            setTranscribeStatus(
-              `Transcribing… ${Math.round(event.pct * 100)}%`,
-            )
-            break
-          case "segment": {
-            const { startMs, endMs, text } = event.segment
-            const fmt = (ms: number) => (ms / 1000).toFixed(2) + "s"
-            segmentBuffer += `[${fmt(startMs)} → ${fmt(endMs)}] ${text}\n`
-            setTranscriptText(segmentBuffer)
-            break
-          }
-          case "captions": {
-            const mapped: FerroCaption[] = event.captions.map((c) => ({
-              text: c.text,
-              startMs: c.startMs,
-              endMs: c.endMs,
-            }))
-            setCaptions(mapped)
-            setTranscriptText(JSON.stringify(mapped, null, 2))
-            setTranscribeStatus("Done")
-            break
-          }
-          case "error":
-            throw new Error(event.error)
-        }
-      })
-    } catch (err) {
-      setFallbackJobState({
-        tone: "error",
-        title: "Transcription failed",
-        detail: err instanceof Error ? err.message : "Unknown error",
-      })
-    } finally {
-      setIsTranscribing(false)
-    }
+    startTranscription(videoFile)
   }
 
   function handleVideoDragEnter(event: DragEvent<HTMLLabelElement>) {

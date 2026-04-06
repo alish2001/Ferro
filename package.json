@@ -17,6 +17,7 @@
     "test": "bun run test:web",
     "test:web": "bun run --cwd apps/web test",
     "typecheck": "bun run typecheck:web && bun run typecheck:render",
+    "demo:homepage": "bun run --cwd apps/web demo:record-homepage",
     "typecheck:web": "bun run --cwd apps/web typecheck",
     "typecheck:render": "bun run --cwd packages/render-core typecheck"
   },

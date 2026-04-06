@@ -41,16 +41,20 @@ export function FieldCard({
   ...textareaProps
 }: FieldCardProps) {
   return (
-    <Card className="rounded-card border border-white/12 bg-white/[0.035] py-0 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+    <Card className="glass-panel rounded-card bg-transparent py-0 text-foreground shadow-none ring-0">
       <CardHeader className="px-5 pt-5 text-center">
-        <CardTitle className="justify-center gap-2 text-xl tracking-[-0.04em] text-white">
+        <CardTitle className="justify-center gap-2 text-xl tracking-[-0.04em] text-foreground">
           <Icon className={cn("size-4", iconClassName)} />
           {title}
         </CardTitle>
-        <CardDescription className="mx-auto max-w-sm leading-6 text-white/68">
+        <CardDescription className="mx-auto max-w-sm leading-6 text-muted-foreground">
           {description}
         </CardDescription>
-        {action ? <CardAction className="static col-auto row-auto mt-3 justify-self-auto self-auto">{action}</CardAction> : null}
+        {action ? (
+          <CardAction className="static col-auto row-auto mt-3 justify-self-auto self-auto">
+            {action}
+          </CardAction>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-3 px-5 pb-5">
         {children}
@@ -62,8 +66,8 @@ export function FieldCard({
           name={name}
           placeholder={placeholder}
           className={cn(
-            "min-h-[240px] rounded-card-inner border-white/12 bg-black/40 px-4 py-3 text-sm leading-7 text-white shadow-none placeholder:text-white/45 focus-visible:border-white/24 focus-visible:ring-white/15",
-            className
+            "min-h-[240px] rounded-card-inner border-border bg-muted/60 px-4 py-3 text-sm leading-7 text-foreground shadow-none placeholder:text-muted-foreground backdrop-blur-sm focus-visible:border-ring focus-visible:ring-ring/50 dark:border-white/12 dark:bg-black/35 dark:text-white dark:placeholder:text-white/45 dark:focus-visible:border-white/24 dark:focus-visible:ring-white/15",
+            className,
           )}
           {...textareaProps}
         />

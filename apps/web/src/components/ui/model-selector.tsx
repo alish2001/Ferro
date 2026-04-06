@@ -14,7 +14,7 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label
         htmlFor="model-select"
-        className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45"
+        className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground"
       >
         Model
       </label>
@@ -23,15 +23,16 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "h-9 rounded-xl border border-white/12 bg-black/40 px-3",
-          "font-mono text-xs text-white",
+          "h-9 rounded-xl border border-border bg-background/80 px-3",
+          "font-mono text-xs text-foreground",
           "appearance-none cursor-pointer",
-          "focus:border-white/24 focus:outline-none focus:ring-1 focus:ring-white/15",
-          "transition-colors hover:border-white/20",
+          "focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/50",
+          "transition-colors hover:border-border",
+          "dark:border-white/12 dark:bg-black/40 dark:text-white dark:focus:border-white/24 dark:focus:ring-white/15 dark:hover:border-white/20",
         )}
       >
         {MODELS.map((m) => (
-          <option key={m.id} value={m.id} className="bg-zinc-900">
+          <option key={m.id} value={m.id} className="bg-background dark:bg-zinc-900">
             {m.label}
           </option>
         ))}

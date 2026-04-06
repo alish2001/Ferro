@@ -14,6 +14,7 @@ import { resolutionSelectorFixture } from "./fixtures/resolution-selector.fixtur
 import { spinnerFixture } from "./fixtures/spinner.fixture";
 import { stageDetailFixture } from "./fixtures/stage-detail.fixture";
 import { statusPillFixture } from "./fixtures/status-pill.fixture";
+import { transcriptionDebugPanelFixture } from "./fixtures/transcription-debug-panel.fixture";
 
 export const fixtures: ComponentFixture<any>[] = [
   // Base UI
@@ -26,6 +27,7 @@ export const fixtures: ComponentFixture<any>[] = [
   modelSelectorFixture,
   // Upload
   fieldCardFixture,
+  transcriptionDebugPanelFixture,
   generationStatusFixture,
   // Preview
   graphicCardFixture,

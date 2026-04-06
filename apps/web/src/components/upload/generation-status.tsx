@@ -19,7 +19,7 @@ export type GenerationCounts = {
 }
 
 const toneClasses: Record<JobTone, string> = {
-  idle: "border-white/10 bg-white/[0.04]",
+  idle: "border-border bg-muted/50 dark:border-white/10 dark:bg-white/[0.04]",
   success: "border-emerald-400/30 bg-emerald-500/10",
   error: "border-red-400/30 bg-red-500/10",
   loading: "border-blue-400/30 bg-blue-500/10",
@@ -55,22 +55,25 @@ export function GenerationStatus({
           label: "ready",
           value: layerCounts.ready,
           className:
-            "border-emerald-400/20 bg-emerald-500/10 text-emerald-100",
+            "border-emerald-400/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-100",
         },
         {
           label: "generating",
           value: layerCounts.generating,
-          className: "border-sky-400/20 bg-sky-500/10 text-sky-100",
+          className:
+            "border-sky-400/20 bg-sky-500/10 text-sky-900 dark:text-sky-100",
         },
         {
           label: "queued",
           value: layerCounts.queued,
-          className: "border-white/10 bg-white/[0.05] text-white/60",
+          className:
+            "border-border bg-muted text-muted-foreground dark:border-white/10 dark:bg-white/[0.05] dark:text-white/60",
         },
         {
           label: "failed",
           value: layerCounts.failed,
-          className: "border-red-400/20 bg-red-500/10 text-red-100",
+          className:
+            "border-red-400/20 bg-red-500/10 text-red-900 dark:text-red-100",
         },
       ].filter((pill) => pill.value > 0)
     : []
@@ -86,23 +89,23 @@ export function GenerationStatus({
       )}
     >
       <div className="flex items-center justify-center gap-2">
-        <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
+        <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
           Generation status
         </p>
         {jobState.tone === "loading" ? (
-          <LoaderCircle className="size-3.5 animate-spin text-sky-100/80" />
+          <LoaderCircle className="size-3.5 animate-spin text-sky-600 dark:text-sky-100/80" />
         ) : null}
       </div>
-      <p className="mt-2 text-base font-semibold text-white">
+      <p className="mt-2 text-base font-semibold text-foreground">
         {jobState.title}
       </p>
-      <p className="mt-1 text-sm leading-6 text-white/65">
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">
         {jobState.detail}
       </p>
 
       {showProgress ? (
         <div className="mt-4 text-left">
-          <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.24em] text-white/45">
+          <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             <span>Live progress</span>
             <span>{roundedProgress}%</span>
           </div>
@@ -116,7 +119,7 @@ export function GenerationStatus({
       ) : null}
 
       {totalLayers ? (
-        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.24em] text-white/50">
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
           {totalLayers} layer{totalLayers === 1 ? "" : "s"} in this pass
         </p>
       ) : null}

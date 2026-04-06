@@ -53,9 +53,12 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
     onChange({ width: w, height: h })
   }
 
+  const inputClass =
+    "w-20 rounded-lg border border-border bg-background/80 px-2 py-1.5 text-center font-mono text-xs text-foreground focus:border-ring focus:outline-none dark:border-white/12 dark:bg-black/40 dark:text-white dark:focus:border-white/24"
+
   return (
     <div className={cn("space-y-3", className)}>
-      <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
+      <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
         Canvas resolution
       </p>
 
@@ -69,8 +72,8 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
             className={cn(
               "rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors",
               activePreset?.label === p.label
-                ? "border-white/40 bg-white/10 text-white"
-                : "border-white/12 bg-white/[0.04] text-white/55 hover:border-white/24 hover:text-white/80",
+                ? "border-border bg-muted text-foreground dark:border-white/40 dark:bg-white/10 dark:text-white"
+                : "border-border bg-muted/50 text-muted-foreground hover:border-border hover:text-foreground dark:border-white/12 dark:bg-white/[0.04] dark:text-white/55 dark:hover:border-white/24 dark:hover:text-white/80",
             )}
           >
             {p.label}
@@ -87,9 +90,9 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
           onChange={(e) => setWidthInput(e.target.value)}
           onBlur={applyFreeInput}
           placeholder="Width"
-          className="w-20 rounded-lg border border-white/12 bg-black/40 px-2 py-1.5 text-center font-mono text-xs text-white focus:border-white/24 focus:outline-none"
+          className={inputClass}
         />
-        <span className="text-white/40">×</span>
+        <span className="text-muted-foreground">×</span>
         <input
           aria-label="Height"
           type="number"
@@ -97,9 +100,9 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
           onChange={(e) => setHeightInput(e.target.value)}
           onBlur={applyFreeInput}
           placeholder="Height"
-          className="w-20 rounded-lg border border-white/12 bg-black/40 px-2 py-1.5 text-center font-mono text-xs text-white focus:border-white/24 focus:outline-none"
+          className={inputClass}
         />
-        <span className="text-white/50 text-xs">or</span>
+        <span className="text-xs text-muted-foreground">or</span>
         <input
           aria-label="Aspect ratio"
           type="text"
@@ -107,11 +110,11 @@ export function ResolutionSelector({ value, onChange, className }: ResolutionSel
           onChange={(e) => setAspectInput(e.target.value)}
           onBlur={applyAspectRatio}
           placeholder="16:9"
-          className="w-16 rounded-lg border border-white/12 bg-black/40 px-2 py-1.5 text-center font-mono text-xs text-white focus:border-white/24 focus:outline-none"
+          className="w-16 rounded-lg border border-border bg-background/80 px-2 py-1.5 text-center font-mono text-xs text-foreground focus:border-ring focus:outline-none dark:border-white/12 dark:bg-black/40 dark:text-white dark:focus:border-white/24"
         />
       </div>
 
-      <p className="text-[11px] text-white/50">
+      <p className="text-[11px] text-muted-foreground">
         Current: {value.width}×{value.height}
       </p>
     </div>
