@@ -330,7 +330,7 @@ Bun is installed at `~/.bun/bin/bun`. The update script handles installation if 
 
 ### Running services
 
-- `bun run dev` is the single command to start development. It builds the Remotion render bundle once, then starts the Next.js dev server on `:3000`.
+- `bun dev` is the single command to start development. It builds the Remotion render bundle once, then starts the Next.js dev server on `:3000`.
 - There are no databases, Docker containers, or background services to manage — everything runs inside the Next.js process.
 - whisper.cpp is auto-installed on the first transcription request; no manual setup needed.
 
@@ -340,10 +340,10 @@ The generation pipeline requires `OPENAI_API_KEY` (used by the default fast mode
 
 ### Canonical commands
 
-See `README.md` and root `package.json` scripts. Key commands: `bun run lint`, `bun run test`, `bun run typecheck`, `bun run dev`, `bun run build:render-bundle`.
+See `README.md` and root `package.json` scripts. Key commands: `bun lint`, `bun test`, `bun typecheck`, `bun dev`, `bun build:render-bundle`.
 
 ### Gotchas
 
 - The `build:render-bundle` script pipes `printf 'n\n'` to suppress an interactive `.gitignore` prompt from Remotion CLI. If the script ever hangs, this is why.
-- If you edit `packages/render-core` while the dev server is running, you must manually rerun `bun run build:render-bundle` before testing server-side MP4 export — the dev server does not watch that package.
+- If you edit `packages/render-core` while the dev server is running, you must manually rerun `bun build:render-bundle` before testing server-side MP4 export — the dev server does not watch that package.
 - Next.js version is `16.2.2` with React 19 and TypeScript 6 — many APIs differ from common training data. Check `node_modules/next/dist/docs/` for current docs before making Next.js changes.
