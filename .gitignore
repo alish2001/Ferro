@@ -18,6 +18,7 @@ coverage/
 playwright-report/
 test-results/
 .playwright-mcp/
+apps/web/docs/demos/
 *.tsbuildinfo
 
 # Build and render outputs
