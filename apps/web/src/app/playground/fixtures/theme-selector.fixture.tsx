@@ -12,18 +12,19 @@ export const themeSelectorFixture: ComponentFixture<ThemeSelectorFixtureProps> =
     id: "theme-selector",
     name: "ThemeSelector",
     category: "base-ui",
-    description: "Light / dark / system theme picker using next-themes",
+    description:
+      "Icon button cycling system / light / dark using next-themes (Monitor, Sun, Moon)",
     tags: ["theme", "accessibility"],
     component: ThemeSelector,
     defaultProps: {},
     states: {
-      wide: {
-        description: "Wider control area",
-        props: { className: "min-w-[12rem]" },
+      subdued: {
+        description: "Default hero-style low contrast",
+        props: { className: "text-muted-foreground/55" },
       },
-      padded: {
-        description: "With extra vertical spacing",
-        props: { className: "gap-3 py-1" },
+      emphasis: {
+        description: "Slightly higher contrast for dark canvases",
+        props: { className: "text-muted-foreground hover:text-foreground" },
       },
     },
   };

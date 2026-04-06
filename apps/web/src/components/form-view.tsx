@@ -14,6 +14,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion"
 
 import { PipelineFlowchart } from "@/components/dev-mode/pipeline-flowchart"
+import { HeroBackdrop } from "@/components/hero-backdrop"
 import { AnimatedProgress } from "@/components/ui/animated-progress"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ModelSelector } from "@/components/ui/model-selector"
@@ -161,26 +162,36 @@ export function FormView({
 
   return (
     <main className="min-h-screen px-4 py-8 text-foreground sm:px-6 sm:py-10">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center justify-center">
-        <div className="w-full max-w-5xl">
-          <div className="mb-10 text-center">
-            <p className="font-mono text-[11px] uppercase tracking-[0.34em] text-muted-foreground">
-              Ferro
-            </p>
-            <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-medium tracking-[-0.06em] text-foreground sm:text-5xl lg:text-6xl">
-              Upload a video and shape the Remotion brief.
+      <div className="mx-auto min-h-[calc(100vh-5rem)] w-full max-w-6xl">
+        <form
+          className="flex flex-col gap-10 lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-x-10 lg:gap-y-0 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:gap-x-14"
+          onSubmit={onGenerate}
+        >
+          <header className="space-y-5 text-center lg:sticky lg:top-24 lg:max-w-none lg:self-start lg:text-left">
+            <div className="space-y-4">
+              <span className="block font-mono text-5xl font-semibold tracking-[0.08em] text-foreground sm:text-6xl lg:text-7xl">
+                FERRO
+              </span>
+              <div className="ferro-flare-underline" aria-hidden>
+                <span className="ferro-flare-underline__halo" />
+                <span className="ferro-flare-underline__core" />
+                <span className="ferro-flare-underline__shimmer" />
+              </div>
+            </div>
+            <h1 className="text-balance text-3xl font-medium tracking-[-0.05em] text-foreground sm:text-4xl lg:text-[2.75rem] lg:leading-[1.08]">
+              AI motion graphics from your footage.
             </h1>
-            <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
-              We transcribe audio automatically for word-accurate timing. Add
-              taste and an optional prompt, then generate overlays.
+            <p className="text-pretty text-sm leading-7 text-muted-foreground sm:text-base lg:max-w-md">
+              Upload a clip, add taste and notes, and generate overlays timed
+              to speech — then tweak the code.
             </p>
-          </div>
+          </header>
 
-          <form className="space-y-6" onSubmit={onGenerate}>
+          <div className="min-w-0 space-y-6">
             <label
               htmlFor="source-video"
               className={cn(
-                "glass-panel-hero group relative block cursor-pointer overflow-hidden p-8 text-center transition-[box-shadow,border-color] sm:p-10",
+                "glass-panel-hero group relative block cursor-pointer overflow-hidden p-8 text-center transition-[box-shadow,border-color] sm:p-10 lg:p-9 lg:text-left",
                 isDraggingVideo &&
                   "!border-border shadow-[0_28px_90px_rgba(0,0,0,0.18)] dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]",
               )}
@@ -189,6 +200,7 @@ export function FormView({
               onDragOver={handleVideoDragOver}
               onDrop={handleVideoDrop}
             >
+              <HeroBackdrop />
               <input
                 id="source-video"
                 type="file"
@@ -200,7 +212,7 @@ export function FormView({
 
               <div className="absolute inset-x-1/4 top-0 h-px bg-gradient-to-r from-transparent via-foreground/20 to-transparent dark:via-white/35" />
 
-              <div className="relative flex flex-col items-center">
+              <div className="relative flex flex-col items-center lg:items-start">
                 <div
                   className={cn(
                     "flex size-16 items-center justify-center rounded-2xl border border-border bg-muted/80 transition-colors dark:bg-white/[0.06]",
@@ -394,7 +406,7 @@ export function FormView({
               </label>
             )}
 
-            <div className="glass-panel mx-auto flex max-w-3xl flex-col gap-4 rounded-card p-5">
+            <div className="glass-panel flex w-full flex-col gap-4 rounded-card p-5">
               <GenerationStatus
                 jobState={displayedJobState}
                 progress={generationProgress}
@@ -547,16 +559,16 @@ export function FormView({
                 type="submit"
                 size="lg"
                 disabled={currentSession?.status === "running"}
-                className="h-14 min-w-[240px] self-center rounded-full bg-primary px-8 text-primary-foreground shadow-lg hover:bg-primary/90 dark:shadow-[0_12px_40px_rgba(255,255,255,0.12)]"
+                className="h-14 min-w-[240px] self-center rounded-full bg-primary px-8 text-primary-foreground shadow-lg hover:bg-primary/90 dark:shadow-[0_12px_40px_rgba(255,255,255,0.12)] lg:self-start"
               >
                 <Sparkles className="size-4" />
                 {currentSession?.status === "running"
-                  ? "Generating Remotion…"
-                  : "Generate Remotion"}
+                  ? "Generating overlays…"
+                  : "Generate overlays"}
               </Button>
             </div>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </main>
   )

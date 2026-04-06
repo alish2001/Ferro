@@ -6,6 +6,7 @@ import { cardFixture } from "./fixtures/card.fixture";
 import { compositorPreviewFixture } from "./fixtures/compositor-preview.fixture";
 import { fieldCardFixture } from "./fixtures/field-card.fixture";
 import { generationStatusFixture } from "./fixtures/generation-status.fixture";
+import { heroBackdropFixture } from "./fixtures/hero-backdrop.fixture";
 import { graphicCardFixture } from "./fixtures/graphic-card.fixture";
 import { modelSelectorFixture } from "./fixtures/model-selector.fixture";
 import { pendingAssistantTextFixture } from "./fixtures/pending-assistant-text.fixture";
@@ -24,6 +25,7 @@ export const fixtures: ComponentFixture<any>[] = [
   statusPillFixture,
   animatedProgressFixture,
   cardFixture,
+  heroBackdropFixture,
   resolutionSelectorFixture,
   modelSelectorFixture,
   themeSelectorFixture,

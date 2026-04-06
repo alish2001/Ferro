@@ -1,15 +1,21 @@
 "use client"
 
+import { Monitor, Moon, Sun } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 
 import { cn } from "@/lib/utils"
 
-const OPTIONS = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-] as const
+const ORDER = ["system", "light", "dark"] as const
+
+const THEME_META: Record<
+  (typeof ORDER)[number],
+  { label: string; Icon: typeof Sun }
+> = {
+  system: { label: "System", Icon: Monitor },
+  light: { label: "Light", Icon: Sun },
+  dark: { label: "Dark", Icon: Moon },
+}
 
 interface ThemeSelectorProps {
   className?: string
@@ -24,49 +30,40 @@ export function ThemeSelector({ className }: ThemeSelectorProps) {
     return () => cancelAnimationFrame(id)
   }, [])
 
+  const current = (theme ?? "system") as (typeof ORDER)[number]
+  const safeCurrent = ORDER.includes(current) ? current : "system"
+  const { label, Icon } = THEME_META[safeCurrent]
+
+  const cycle = () => {
+    const i = ORDER.indexOf(safeCurrent)
+    const next = ORDER[(i + 1) % ORDER.length]
+    setTheme(next)
+  }
+
   if (!mounted) {
     return (
       <div
-        className={cn(
-          "flex flex-col gap-1.5 opacity-0",
-          className,
-        )}
+        className={cn("size-8 shrink-0 rounded-full opacity-0", className)}
         aria-hidden
-      >
-        <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
-          Theme
-        </span>
-        <div className="h-9 w-[7.5rem] rounded-xl border border-border bg-muted" />
-      </div>
+      />
     )
   }
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <label
-        htmlFor="theme-select"
-        className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground"
-      >
-        Theme
-      </label>
-      <select
-        id="theme-select"
-        value={theme ?? "system"}
-        onChange={(e) => setTheme(e.target.value)}
-        className={cn(
-          "h-9 min-w-[7.5rem] rounded-xl border border-border bg-background/80 px-3",
-          "font-mono text-xs text-foreground",
-          "appearance-none cursor-pointer",
-          "focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/50",
-          "transition-colors hover:border-border",
-        )}
-      >
-        {OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <button
+      type="button"
+      onClick={cycle}
+      className={cn(
+        "inline-flex size-8 shrink-0 items-center justify-center rounded-full",
+        "text-muted-foreground/55 transition-colors",
+        "hover:bg-muted/40 hover:text-muted-foreground",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40",
+        className,
+      )}
+      aria-label={`Theme: ${label}. Click to switch to next option.`}
+      title={`${label} theme — click to change`}
+    >
+      <Icon className="size-[1.125rem] stroke-[1.75]" aria-hidden />
+    </button>
   )
 }

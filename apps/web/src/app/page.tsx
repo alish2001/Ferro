@@ -501,12 +501,12 @@ export default function Home() {
 
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-end p-4 sm:p-6">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-end p-3 sm:p-4">
         <div className="pointer-events-auto">
           <ThemeSelector />
         </div>
       </div>
-      <div className="pt-14 sm:pt-16">
+      <div className="pt-12 sm:pt-14">
       <AnimatePresence mode="wait">
       {showPreview && previewSession ? (
         <motion.div
