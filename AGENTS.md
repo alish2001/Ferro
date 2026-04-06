@@ -326,3 +326,28 @@ If `packages/render-core` is ever moved again, preserve those relative links exa
 - Preserve the current package boundary: web in `apps/web`, rendering in `packages/render-core`
 - Update root docs when changing the workspace shape or canonical commands
 
+## Cursor Cloud specific instructions
+
+### Environment
+
+Bun is installed at `~/.bun/bin/bun`. The update script handles installation if missing. Chrome, ffmpeg, and ffprobe are pre-installed on the VM.
+
+### Running services
+
+- `bun dev` is the single command to start development. It builds the Remotion render bundle once, then starts the Next.js dev server on `:3000`.
+- There are no databases, Docker containers, or background services to manage — everything runs inside the Next.js process.
+- whisper.cpp is auto-installed on the first transcription request; no manual setup needed.
+
+### API keys
+
+The generation pipeline requires `OPENAI_API_KEY` (used by the default fast model `gpt-4o-mini` for planning/skill-detection, so effectively always required). `ANTHROPIC_API_KEY` is needed only when using Anthropic models for generation. Set these as environment variables or in a `.env.local` file in `apps/web/`.
+
+### Canonical commands
+
+See `README.md` and root `package.json` scripts. Key commands: `bun lint`, `bun test`, `bun typecheck`, `bun dev`, `bun build:render-bundle`.
+
+### Gotchas
+
+- The `build:render-bundle` script pipes `printf 'n\n'` to suppress an interactive `.gitignore` prompt from Remotion CLI. If the script ever hangs, this is why.
+- If you edit `packages/render-core` while the dev server is running, you must manually rerun `bun build:render-bundle` before testing server-side MP4 export — the dev server does not watch that package.
+- Next.js version is `16.2.2` with React 19 and TypeScript 6 — many APIs differ from common training data. Check `node_modules/next/dist/docs/` for current docs before making Next.js changes.
