@@ -35,12 +35,12 @@ export function CompositorPreview({
   }, [layers, videoObjectUrl]);
 
   return (
-    <div className="overflow-hidden rounded-card border border-white/12 bg-black/60 shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
+    <div className="overflow-hidden rounded-card border border-border bg-muted/80 shadow-lg dark:border-white/12 dark:bg-black/60 dark:shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
       <div className="px-5 pt-5 pb-3">
-        <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
+        <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
           Compositor preview
         </p>
-        <p className="mt-1 text-xs text-white/50">
+        <p className="mt-1 text-xs text-muted-foreground">
           All {layers.length} layer{layers.length !== 1 ? "s" : ""} composited
           over video · {width}×{height} · {fps}fps
         </p>
@@ -57,7 +57,7 @@ export function CompositorPreview({
                 <button
                   type="button"
                   onClick={reset}
-                  className="rounded-lg border border-white/12 bg-white/[0.06] px-3 py-1 text-xs text-white/60 hover:bg-white/[0.1]"
+                  className="rounded-lg border border-border bg-muted px-3 py-1 text-xs text-muted-foreground hover:bg-muted/80 dark:border-white/12 dark:bg-white/[0.06] dark:text-white/60 dark:hover:bg-white/[0.1]"
                 >
                   Retry
                 </button>
@@ -65,7 +65,7 @@ export function CompositorPreview({
             </div>
           )}
         >
-          <div className="overflow-hidden rounded-xl border border-white/8">
+          <div className="overflow-hidden rounded-xl border border-border dark:border-white/8">
             <Player
               acknowledgeRemotionLicense={true}
               component={CompositeComponent}

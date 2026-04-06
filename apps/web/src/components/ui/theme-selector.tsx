@@ -20,7 +20,8 @@ export function ThemeSelector({ className }: ThemeSelectorProps) {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
+    const id = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(id)
   }, [])
 
   if (!mounted) {

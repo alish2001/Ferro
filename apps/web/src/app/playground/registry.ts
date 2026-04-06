@@ -11,6 +11,7 @@ import { modelSelectorFixture } from "./fixtures/model-selector.fixture";
 import { pendingAssistantTextFixture } from "./fixtures/pending-assistant-text.fixture";
 import { pipelineFlowchartFixture } from "./fixtures/pipeline-flowchart.fixture";
 import { resolutionSelectorFixture } from "./fixtures/resolution-selector.fixture";
+import { themeSelectorFixture } from "./fixtures/theme-selector.fixture";
 import { spinnerFixture } from "./fixtures/spinner.fixture";
 import { stageDetailFixture } from "./fixtures/stage-detail.fixture";
 import { statusPillFixture } from "./fixtures/status-pill.fixture";
@@ -25,6 +26,7 @@ export const fixtures: ComponentFixture<any>[] = [
   cardFixture,
   resolutionSelectorFixture,
   modelSelectorFixture,
+  themeSelectorFixture,
   // Upload
   fieldCardFixture,
   transcriptionDebugPanelFixture,

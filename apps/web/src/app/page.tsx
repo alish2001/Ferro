@@ -506,6 +506,7 @@ export default function Home() {
           <ThemeSelector />
         </div>
       </div>
+      <div className="pt-14 sm:pt-16">
       <AnimatePresence mode="wait">
       {showPreview && previewSession ? (
         <motion.div
@@ -610,6 +611,7 @@ export default function Home() {
         </motion.div>
       )}
     </AnimatePresence>
+      </div>
     </>
   )
 }

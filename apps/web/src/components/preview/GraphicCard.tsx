@@ -24,7 +24,7 @@ const PendingAssistantText = dynamic(
   {
     ssr: false,
     loading: () => (
-      <span className="text-sm text-white/40">Updating…</span>
+      <span className="text-sm text-muted-foreground">Updating…</span>
     ),
   },
 )
@@ -106,30 +106,30 @@ export const GraphicCard = React.memo(function GraphicCard({
   const typeLabel = TYPE_LABELS[layer.type] ?? layer.type
 
   return (
-    <div className="flex flex-col gap-4 rounded-card border border-white/12 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+    <div className="flex flex-col gap-4 rounded-card border border-border bg-card/90 p-5 shadow-lg backdrop-blur-sm dark:border-white/12 dark:bg-white/[0.035] dark:shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-white/55">
+            <span className="rounded-full border border-border bg-muted px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground dark:border-white/12 dark:bg-white/[0.06] dark:text-white/55">
               {typeLabel}
             </span>
             <StatusPill status={layer.status} />
           </div>
-          <p className="mt-1.5 text-sm leading-5 font-medium text-white/80">
+          <p className="mt-1.5 text-sm leading-5 font-medium text-foreground/90">
             {layer.title}
           </p>
-          <p className="mt-1 text-xs text-white/50">
+          <p className="mt-1 text-xs text-muted-foreground">
             {versionCount} local version{versionCount === 1 ? "" : "s"}
           </p>
         </div>
 
-        <span className="font-mono text-[10px] text-white/50">
+        <span className="font-mono text-[10px] text-muted-foreground">
           {Math.round((layer.from / fps) * 10) / 10}s -{" "}
           {Math.round(((layer.from + layer.durationInFrames) / fps) * 10) / 10}s
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-white/8 bg-black/60">
+      <div className="overflow-hidden rounded-xl border border-border bg-muted/80 dark:border-white/8 dark:bg-black/60">
         {compilation.Component ? (
           <ErrorBoundary
             fallback={(error, reset) => (
@@ -140,7 +140,7 @@ export const GraphicCard = React.memo(function GraphicCard({
                 <button
                   type="button"
                   onClick={reset}
-                  className="rounded-lg border border-white/12 bg-white/[0.06] px-3 py-1 text-xs text-white/60 hover:bg-white/[0.1]"
+                  className="rounded-lg border border-border bg-muted px-3 py-1 text-xs text-muted-foreground hover:bg-muted/80 dark:border-white/12 dark:bg-white/[0.06] dark:text-white/60 dark:hover:bg-white/[0.1]"
                 >
                   Retry
                 </button>
@@ -163,7 +163,7 @@ export const GraphicCard = React.memo(function GraphicCard({
           </ErrorBoundary>
         ) : (
           <div className="flex aspect-video items-center justify-center px-4 text-center">
-            <p className="font-mono text-xs text-white/50">
+            <p className="font-mono text-xs text-muted-foreground">
               {layer.status === "queued" && "Waiting for generation to start."}
               {layer.status === "generating" &&
                 "Generating this motion graphic…"}
@@ -182,14 +182,14 @@ export const GraphicCard = React.memo(function GraphicCard({
         </div>
       ) : null}
 
-      <div className="rounded-card-inner border border-white/8 bg-black/35 p-3">
+      <div className="rounded-card-inner border border-border bg-muted/50 p-3 dark:border-white/8 dark:bg-black/35">
         <div className="flex items-center justify-between gap-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-white/45">
+          <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
             Layer chat
           </p>
           {isEditPending ? (
-            <span className="inline-flex items-center gap-2 text-xs text-white/45">
-              <Spinner className="size-3.5 text-sky-100/80" />
+            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner className="size-3.5 text-sky-600 dark:text-sky-100/80" />
               Updating…
             </span>
           ) : null}
@@ -212,13 +212,13 @@ export const GraphicCard = React.memo(function GraphicCard({
                 className={cn(
                   "rounded-xl px-3 py-2 text-sm leading-6",
                   message.role === "user"
-                    ? "border border-white/10 bg-white/[0.06] text-white/85"
-                    : "border border-white/8 bg-black/45 text-white/72",
+                    ? "border border-border bg-muted text-foreground/90 dark:border-white/10 dark:bg-white/[0.06] dark:text-white/85"
+                    : "border border-border bg-muted/80 text-muted-foreground dark:border-white/8 dark:bg-black/45 dark:text-white/72",
                   message.status === "failed" &&
-                    "border-red-400/20 bg-red-500/10 text-red-200",
+                    "border-red-400/20 bg-red-500/10 text-red-800 dark:text-red-200",
                 )}
               >
-                <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/40">
+                <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
                   {message.role}
                 </p>
                 <div className="mt-1 whitespace-pre-wrap">
@@ -232,7 +232,7 @@ export const GraphicCard = React.memo(function GraphicCard({
               </div>
             ))
           ) : (
-            <p className="rounded-xl border border-dashed border-white/8 bg-white/[0.02] px-3 py-3 text-sm text-white/45">
+            <p className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground dark:border-white/8 dark:bg-white/[0.02] dark:text-white/45">
               No follow-up edits yet. Ask for a revision and the latest code
               will replace this layer in place.
             </p>
@@ -250,7 +250,7 @@ export const GraphicCard = React.memo(function GraphicCard({
                 ? "Tighten the typography, change the entrance motion, simplify the color palette…"
                 : "Layer edits unlock after generation completes."
             }
-            className="min-h-[96px] rounded-xl border-white/10 bg-black/50 px-3 py-3 text-[13px] leading-6 text-white/80 placeholder:text-white/40"
+            className="min-h-[96px] rounded-xl border-border bg-background px-3 py-3 text-[13px] leading-6 text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-black/50 dark:text-white/80 dark:placeholder:text-white/40"
           />
           <div className="flex justify-end">
             <Button
@@ -258,11 +258,11 @@ export const GraphicCard = React.memo(function GraphicCard({
               size="sm"
               onClick={handleSubmitPrompt}
               disabled={!prompt.trim() || !isReady || isEditPending}
-              className="rounded-xl bg-white px-4 text-black hover:bg-zinc-200"
+              className="rounded-xl bg-primary px-4 text-primary-foreground hover:bg-primary/90"
             >
               {isEditPending ? (
                 <>
-                  <Spinner className="text-black" />
+                  <Spinner className="text-primary-foreground" />
                   Updating…
                 </>
               ) : (
@@ -282,8 +282,8 @@ export const GraphicCard = React.memo(function GraphicCard({
           }}
           disabled={!isReady}
           className={cn(
-            "min-h-[160px] w-full resize-none rounded-xl border bg-black/50 px-3 py-3 font-mono text-[11px] leading-5 text-white/80 placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-white/15",
-            isDirty ? "border-white/20" : "border-white/10",
+            "min-h-[160px] w-full resize-none rounded-xl border bg-background px-3 py-3 font-mono text-[11px] leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring/50 dark:bg-black/50 dark:text-white/80 dark:placeholder:text-white/40 dark:focus:ring-white/15",
+            isDirty ? "border-border dark:border-white/20" : "border-border dark:border-white/10",
             !isReady && "opacity-55",
           )}
           rows={8}
@@ -297,7 +297,7 @@ export const GraphicCard = React.memo(function GraphicCard({
           onClick={handleApplyChanges}
           size="sm"
           disabled={!isReady}
-          className="self-end rounded-xl bg-white px-4 text-black hover:bg-zinc-200"
+          className="self-end rounded-xl bg-primary px-4 text-primary-foreground hover:bg-primary/90"
         >
           Apply changes
         </Button>

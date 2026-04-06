@@ -36,7 +36,7 @@ export function TranscriptionDebugPanel({
   return (
     <div
       className={cn(
-        "glass-panel-inner rounded-2xl border border-white/10 px-3 py-2 text-left",
+        "glass-panel-inner rounded-2xl border border-border px-3 py-2 text-left dark:border-white/10",
         className,
       )}
     >
@@ -45,7 +45,7 @@ export function TranscriptionDebugPanel({
         onClick={() => setShowRaw((v) => !v)}
         aria-expanded={showRaw}
         aria-controls={panelId}
-        className="flex w-full items-center justify-between gap-2 text-xs font-medium text-white/70 transition hover:text-white/90"
+        className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground transition hover:text-foreground dark:text-white/70 dark:hover:text-white/90"
       >
         <span>
           {devMode
@@ -54,7 +54,7 @@ export function TranscriptionDebugPanel({
         </span>
         <ChevronDown
           className={cn(
-            "size-4 shrink-0 text-white/45 transition-transform",
+            "size-4 shrink-0 text-muted-foreground transition-transform dark:text-white/45",
             showRaw && "rotate-180",
           )}
         />
@@ -63,31 +63,37 @@ export function TranscriptionDebugPanel({
       {showRaw ? (
         <div
           id={panelId}
-          className="mt-3 space-y-3 border-t border-white/10 pt-3"
+          className="mt-3 space-y-3 border-t border-border pt-3 dark:border-white/10"
         >
           {detectedVideoFps != null ? (
-            <p className="font-mono text-[11px] text-white/55">
+            <p className="font-mono text-[11px] text-muted-foreground">
               Detected video FPS:{" "}
-              <span className="text-white/80">{detectedVideoFps}</span>
+              <span className="text-foreground dark:text-white/80">
+                {detectedVideoFps}
+              </span>
             </p>
           ) : null}
           {isTranscribing && !captions?.length ? (
-            <p className="text-xs text-white/55">
+            <p className="text-xs text-muted-foreground dark:text-white/55">
               {transcribeStatus ?? "Transcribing…"}
             </p>
           ) : null}
           {captions && captions.length > 0 ? (
             <>
-              <p className="font-mono text-[11px] text-white/55">
+              <p className="font-mono text-[11px] text-muted-foreground">
                 Word-level entries:{" "}
-                <span className="text-white/80">{captions.length}</span>
+                <span className="text-foreground dark:text-white/80">
+                  {captions.length}
+                </span>
               </p>
-              <pre className="max-h-48 overflow-auto rounded-xl border border-white/8 bg-black/50 p-3 font-mono text-[10px] leading-relaxed text-white/70">
+              <pre className="max-h-48 overflow-auto rounded-xl border border-border bg-muted p-3 font-mono text-[10px] leading-relaxed text-foreground/90 dark:border-white/8 dark:bg-black/50 dark:text-white/70">
                 {JSON.stringify(captions, null, 2)}
               </pre>
             </>
           ) : !isTranscribing ? (
-            <p className="text-xs text-white/45">No caption payload yet.</p>
+            <p className="text-xs text-muted-foreground dark:text-white/45">
+              No caption payload yet.
+            </p>
           ) : null}
         </div>
       ) : null}

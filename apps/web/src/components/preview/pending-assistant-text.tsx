@@ -6,7 +6,7 @@ const THINKING_WORDS = ["Assistant", "is", "revising", "this", "layer"]
 
 export function PendingAssistantText() {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-white/72">
+    <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground dark:text-white/72">
       {THINKING_WORDS.map((word, index) => (
         <motion.span
           key={word}

@@ -35,7 +35,7 @@ export function AnimatedProgress({
     <div
       data-slot="progress"
       className={cn(
-        "relative h-2.5 overflow-hidden rounded-full bg-white/8 ring-1 ring-white/8",
+        "relative h-2.5 overflow-hidden rounded-full bg-muted ring-1 ring-border dark:bg-white/8 dark:ring-white/8",
         className,
       )}
     >

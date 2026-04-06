@@ -28,7 +28,7 @@ function StatusDot({ status }: { status: DevModeStageTrace["status"] }) {
 
   const className =
     status === "pending"
-      ? "block size-2.5 rounded-full bg-white/20"
+      ? "block size-2.5 rounded-full bg-muted-foreground/30 dark:bg-white/20"
       : status === "running"
         ? "block size-2.5 rounded-full bg-sky-400 motion-safe:animate-pulse"
         : status === "complete"
@@ -40,9 +40,9 @@ function StatusDot({ status }: { status: DevModeStageTrace["status"] }) {
 
 function Arrow() {
   return (
-    <div className="hidden items-center text-white/15 sm:flex" aria-hidden="true">
-      <div className="h-px w-6 bg-white/15" />
-      <div className="border-y-[4px] border-l-[6px] border-y-transparent border-l-white/15" />
+    <div className="hidden items-center text-muted-foreground/25 sm:flex dark:text-white/15" aria-hidden="true">
+      <div className="h-px w-6 bg-border dark:bg-white/15" />
+      <div className="border-y-[4px] border-l-[6px] border-y-transparent border-l-border dark:border-l-white/15" />
     </div>
   )
 }
@@ -50,7 +50,7 @@ function Arrow() {
 function DurationLabel({ ms }: { ms: number | null }) {
   if (ms == null) return null
   return (
-    <span className="tabular-nums text-[10px] text-white/50">
+    <span className="tabular-nums text-[10px] text-muted-foreground">
       {(ms / 1000).toFixed(1)}s
     </span>
   )
@@ -61,7 +61,7 @@ function TokenLabel({ usage }: { usage: DevModeStageTrace["tokenUsage"] }) {
   const total = usage.inputTokens + usage.outputTokens
   if (total === 0) return null
   return (
-    <span className="tabular-nums text-[10px] text-white/50">
+    <span className="tabular-nums text-[10px] text-muted-foreground">
       {(total / 1000).toFixed(1)}k tok
     </span>
   )
@@ -85,13 +85,13 @@ function StageNode({ trace, label, isSelected, onClick }: StageNodeProps) {
       aria-label={`${label} stage — ${status}`}
       className={`flex min-w-[120px] flex-col items-center gap-1 rounded-xl border px-4 py-2.5 transition-colors focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:outline-none ${
         isSelected
-          ? "border-white/20 bg-white/[0.06]"
-          : "border-white/[0.08] bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.04]"
+          ? "border-border bg-muted dark:border-white/20 dark:bg-white/[0.06]"
+          : "border-border bg-muted/40 hover:border-border hover:bg-muted/70 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-white/12 dark:hover:bg-white/[0.04]"
       }`}
     >
       <div className="flex items-center gap-2">
         <StatusDot status={status} />
-        <span className="text-xs font-medium text-white/70">{label}</span>
+        <span className="text-xs font-medium text-foreground/80 dark:text-white/70">{label}</span>
       </div>
       <div className="flex items-center gap-2">
         <DurationLabel ms={trace?.durationMs ?? null} />
@@ -144,9 +144,9 @@ export function PipelineFlowchart({
   )
 
   return (
-    <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-white/[0.015] p-4">
+    <div className="space-y-3 rounded-2xl border border-border bg-muted/30 p-4 dark:border-white/[0.08] dark:bg-white/[0.015]">
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/50">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground dark:text-white/50">
           Pipeline
         </span>
       </div>
