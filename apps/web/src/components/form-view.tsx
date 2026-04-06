@@ -182,8 +182,7 @@ export function FormView({
               AI motion graphics from your footage.
             </h1>
             <p className="text-pretty text-sm leading-7 text-muted-foreground sm:text-base lg:max-w-md">
-              Upload a clip, add taste and notes, and generate overlays timed
-              to speech — then tweak the code.
+              Upload a clip, generate and export professional motion graphics.
             </p>
           </header>
 
