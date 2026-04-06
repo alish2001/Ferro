@@ -7,6 +7,8 @@
 /* Light theme (default) */
 :root {
   color-scheme: light;
+  --selection-background: rgba(59, 130, 246, 0.22);
+  --selection-foreground: #111827;
   --paper: #ffffff;
   --paper-strong: #fafafa;
   --paper-muted: #71717a;
@@ -77,6 +79,8 @@
 /* Dark theme */
 .dark {
   color-scheme: dark;
+  --selection-background: rgba(96, 165, 250, 0.42);
+  --selection-foreground: #f8fafc;
   --paper: #ffffff;
   --paper-strong: #fafafa;
   --paper-muted: #d4d4d8;
@@ -188,8 +192,15 @@ a {
 }
 
 ::selection {
-  background: var(--primary);
-  color: var(--primary-foreground);
+  background-color: var(--selection-background);
+  color: var(--selection-foreground);
+  -webkit-text-fill-color: var(--selection-foreground);
+  text-shadow: none;
+}
+
+::-moz-selection {
+  background-color: var(--selection-background);
+  color: var(--selection-foreground);
 }
 
 @theme inline {
